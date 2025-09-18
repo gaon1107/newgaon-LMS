@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  Box, 
+import React, { useState, useContext } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Box,
   Container,
   Dialog,
   DialogContent,
@@ -12,14 +13,21 @@ import {
   FormControlLabel,
   Checkbox,
   Link as MuiLink,
-  Divider
+  Divider,
+  Alert,
+  CircularProgress
 } from '@mui/material'
 import { Login as LoginIcon, PersonAdd as PersonAddIcon } from '@mui/icons-material'
+import { AuthContext } from '../contexts/AuthContext'
 
 const HomePage = () => {
+  const navigate = useNavigate()
+  const { login, isLoading } = useContext(AuthContext)
+
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false)
   const [contactDialogOpen, setContactDialogOpen] = useState(false)
+  const [loginError, setLoginError] = useState('')
 
   const [loginData, setLoginData] = useState({
     username: '',
@@ -27,12 +35,29 @@ const HomePage = () => {
     rememberMe: false
   })
 
-  const handleLoginSubmit = () => {
-    // 실제 로그인 처리
-    console.log('로그인:', loginData)
-    setLoginDialogOpen(false)
-    // 성공 시 메인 화면으로 이동
-    window.location.href = '/dashboard'
+  const handleLoginSubmit = async () => {
+    if (!loginData.username || !loginData.password) {
+      setLoginError('아이디와 비밀번호를 입력해주세요.')
+      return
+    }
+
+    setLoginError('')
+
+    try {
+      const result = await login({
+        username: loginData.username,
+        password: loginData.password
+      })
+
+      if (result.success) {
+        setLoginDialogOpen(false)
+        navigate('/dashboard')
+      } else {
+        setLoginError(result.message || '로그인에 실패했습니다.')
+      }
+    } catch (error) {
+      setLoginError('로그인 중 오류가 발생했습니다.')
+    }
   }
 
   return (
@@ -320,22 +345,41 @@ const HomePage = () => {
           <Typography variant="body2" align="center" sx={{ mb: 3, color: 'text.secondary' }}>
             가입하신 ID와 비밀번호를 입력해 주세요.
           </Typography>
-          
+
+          {loginError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {loginError}
+            </Alert>
+          )}
+
           <Box sx={{ mb: 2 }}>
             <TextField
               fullWidth
               placeholder="사용자 ID"
               value={loginData.username}
-              onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+              onChange={(e) => {
+                setLoginData({...loginData, username: e.target.value})
+                setLoginError('')
+              }}
               sx={{ mb: 2 }}
+              disabled={isLoading}
             />
             <TextField
               fullWidth
               type="password"
               placeholder="비밀번호"
               value={loginData.password}
-              onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+              onChange={(e) => {
+                setLoginData({...loginData, password: e.target.value})
+                setLoginError('')
+              }}
               sx={{ mb: 2 }}
+              disabled={isLoading}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !isLoading) {
+                  handleLoginSubmit()
+                }
+              }}
             />
           </Box>
           
@@ -359,9 +403,17 @@ const HomePage = () => {
             variant="contained"
             size="large"
             onClick={handleLoginSubmit}
+            disabled={isLoading}
             sx={{ mb: 2 }}
           >
-            로그인
+            {isLoading ? (
+              <>
+                <CircularProgress size={20} sx={{ mr: 1 }} />
+                로그인 중...
+              </>
+            ) : (
+              '로그인'
+            )}
           </Button>
           
           <Divider sx={{ my: 2 }}>또는</Divider>
