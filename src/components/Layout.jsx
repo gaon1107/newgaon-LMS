@@ -16,7 +16,8 @@ import {
   Menu,
   MenuItem,
   Divider,
-  CssBaseline
+  CssBaseline,
+  Collapse
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -28,7 +29,11 @@ import {
   Message as MessageIcon,
   Folder as FileIcon,
   AccountCircle as AccountIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  ExpandLess,
+  ExpandMore,
+  Today as TodayIcon,
+  CalendarMonth as CalendarIcon
 } from '@mui/icons-material'
 import { AuthContext } from '../contexts/AuthContext'
 
@@ -41,10 +46,19 @@ const Layout = ({ children }) => {
   
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState(null)
+  const [attendanceMenuOpen, setAttendanceMenuOpen] = useState(false)
 
   const menuItems = [
     { text: '대시보드', icon: <DashboardIcon />, path: '/dashboard' },
-    { text: '출결 관리', icon: <AttendanceIcon />, path: '/attendance' },
+    { 
+      text: '출결 관리', 
+      icon: <AttendanceIcon />, 
+      hasSubmenu: true,
+      submenu: [
+        { text: '일별 출석', icon: <TodayIcon />, path: '/attendance/daily' },
+        { text: '월별 출석', icon: <CalendarIcon />, path: '/attendance/monthly' }
+      ]
+    },
     { text: '학생 관리', icon: <StudentsIcon />, path: '/students' },
     { text: '강사 관리', icon: <TeachersIcon />, path: '/teachers' },
     { text: '강의 관리', icon: <LecturesIcon />, path: '/lectures' },
@@ -56,7 +70,18 @@ const Layout = ({ children }) => {
     setMobileOpen(!mobileOpen)
   }
 
-  const handleMenuClick = (path) => {
+  const handleMenuClick = (path, hasSubmenu = false) => {
+    if (hasSubmenu) {
+      if (path === '출결 관리') {
+        setAttendanceMenuOpen(!attendanceMenuOpen)
+      }
+    } else {
+      navigate(path)
+      setMobileOpen(false)
+    }
+  }
+
+  const handleSubmenuClick = (path) => {
     navigate(path)
     setMobileOpen(false)
   }
@@ -85,17 +110,43 @@ const Layout = ({ children }) => {
       <Divider />
       <List>
         {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton 
-              selected={location.pathname === item.path}
-              onClick={() => handleMenuClick(item.path)}
-            >
-              <ListItemIcon>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
+          <React.Fragment key={item.text}>
+            <ListItem disablePadding>
+              <ListItemButton 
+                selected={!item.hasSubmenu && location.pathname === item.path}
+                onClick={() => handleMenuClick(item.hasSubmenu ? item.text : item.path, item.hasSubmenu)}
+              >
+                <ListItemIcon>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText primary={item.text} />
+                {item.hasSubmenu && (
+                  item.text === '출결 관리' ? (
+                    attendanceMenuOpen ? <ExpandLess /> : <ExpandMore />
+                  ) : null
+                )}
+              </ListItemButton>
+            </ListItem>
+            {item.hasSubmenu && item.text === '출결 관리' && (
+              <Collapse in={attendanceMenuOpen} timeout="auto" unmountOnExit>
+                <List component="div" disablePadding>
+                  {item.submenu.map((subItem) => (
+                    <ListItemButton
+                      key={subItem.text}
+                      sx={{ pl: 4 }}
+                      selected={location.pathname === subItem.path}
+                      onClick={() => handleSubmenuClick(subItem.path)}
+                    >
+                      <ListItemIcon>
+                        {subItem.icon}
+                      </ListItemIcon>
+                      <ListItemText primary={subItem.text} />
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Collapse>
+            )}
+          </React.Fragment>
         ))}
       </List>
     </div>
@@ -122,7 +173,21 @@ const Layout = ({ children }) => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {menuItems.find(item => item.path === location.pathname)?.text || '대시보드'}
+            {(() => {
+              // 메인 메뉴에서 찾기
+              const mainMenu = menuItems.find(item => !item.hasSubmenu && item.path === location.pathname)
+              if (mainMenu) return mainMenu.text
+              
+              // 서브메뉴에서 찾기
+              for (const item of menuItems) {
+                if (item.hasSubmenu && item.submenu) {
+                  const subMenu = item.submenu.find(sub => sub.path === location.pathname)
+                  if (subMenu) return subMenu.text
+                }
+              }
+              
+              return '대시보드'
+            })()} 
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <IconButton

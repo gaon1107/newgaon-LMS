@@ -5,7 +5,8 @@ import HomePage from './pages/HomePage'
 import RegisterPage from './pages/RegisterPage'
 import PasswordResetPage from './pages/PasswordResetPage'
 import DashboardPage from './pages/DashboardPage'
-import AttendancePage from './pages/AttendancePage'
+import AttendanceDailyPage from './pages/AttendanceDailyPage'
+import AttendanceMonthlyPage from './pages/AttendanceMonthlyPage'
 import StudentPage from './pages/StudentPage'
 import TeacherPage from './pages/TeacherPage'
 import LecturePage from './pages/LecturePage'
@@ -23,7 +24,8 @@ function App() {
   // 로그인이 필요한 페이지들 (관리자 페이지)
   const privateRoutes = [
     '/dashboard',
-    '/attendance',
+    '/attendance/daily',
+    '/attendance/monthly',
     '/students', 
     '/teachers',
     '/lectures',
@@ -52,9 +54,14 @@ function App() {
           <DashboardPage />
         </Layout>
       } />
-      <Route path="/attendance" element={
+      <Route path="/attendance/daily" element={
         <Layout>
-          <AttendancePage />
+          <AttendanceDailyPage />
+        </Layout>
+      } />
+      <Route path="/attendance/monthly" element={
+        <Layout>
+          <AttendanceMonthlyPage />
         </Layout>
       } />
       <Route path="/students" element={
