@@ -6,8 +6,22 @@ export default defineConfig({
   base: process.env.VERCEL ? '/' : (process.env.NODE_ENV === 'production' ? '/newgaon-LMS-master/' : '/'),
   
   server: {
-    port: 3000,
+    port: 5000,
     host: true, // 외부 접근 허용
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '10.0.2.2',
+      'maplelike-lusterless-waylon.ngrok-free.dev',
+      '.ngrok-free.dev',
+      '.ngrok.io',
+      '.ngrok.app',
+      'all'
+    ],
+    cors: {
+      origin: true,
+      credentials: true
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5002',
