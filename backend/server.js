@@ -124,12 +124,13 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log('🚀 ================================');
       console.log(`🚀 학원관리 LMS 백엔드 서버 시작`);
       console.log(`🚀 포트: ${PORT}`);
       console.log(`🚀 환경: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🚀 URL: http://localhost:${PORT}`);
+      console.log(`🚀 에뮬레이터 URL: http://10.0.2.2:${PORT}`);
       console.log('🚀 ================================');
     });
 

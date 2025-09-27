@@ -219,7 +219,7 @@ router.post('/user', authenticateToken, async (req, res) => {
 
     const userData = users[0];
 
-    // 기존 앱 호환 응답 형식
+    // 기존 앱 호환 응답 형식 (라이선스 정보 포함)
     const responseData = {
       userInfo: {
         id: userData.id,
@@ -233,7 +233,19 @@ router.post('/user', authenticateToken, async (req, res) => {
       }
     };
 
-    res.json(formatLegacyResponse(true, responseData));
+    const responseWithHeader = formatLegacyResponse(true, responseData);
+
+    // 안드로이드 앱이 기대하는 헤더 정보 추가
+    responseWithHeader.header.appVersion = "1.15.1";
+    responseWithHeader.header.licenses = {
+      attend: {
+        license: "VALID_LICENSE_KEY",
+        licenseTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1년 후
+        remainingDays: 365
+      }
+    };
+
+    res.json(responseWithHeader);
 
   } catch (error) {
     console.error('Legacy get user error:', error);

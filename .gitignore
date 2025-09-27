@@ -91,3 +91,11 @@ build_backup_temp/
 
 # Package lock files (if using yarn)
 package-lock.json
+
+# SQLite database files (not used - MySQL only)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal

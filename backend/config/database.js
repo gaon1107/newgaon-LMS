@@ -1,131 +1,44 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-// SQLite 데이터베이스 파일 경로
-const dbPath = path.join(__dirname, '..', 'database.sqlite');
-
-// SQLite 데이터베이스 연결
-const db = new Database(dbPath);
-
-// WAL 모드 설정 (성능 향상)
-db.pragma('journal_mode = WAL');
-
-// 초기 테이블 생성
-const initDatabase = () => {
-  try {
-    // 사용자 테이블
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        role TEXT DEFAULT 'instructor',
-        is_active BOOLEAN DEFAULT 1,
-        last_login_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 학생 테이블
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS students (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_number TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        parent_phone TEXT,
-        email TEXT,
-        is_active BOOLEAN DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // 출석 로그 테이블
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS attendance_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id INTEGER NOT NULL,
-        status INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (student_id) REFERENCES students (id)
-      )
-    `);
-
-    // 기본 관리자 계정 생성
-    const bcrypt = require('bcryptjs');
-    const adminPassword = bcrypt.hashSync('admin123', 10);
-
-    const checkAdmin = db.prepare('SELECT id FROM users WHERE username = ?');
-    if (!checkAdmin.get('admin')) {
-      const insertAdmin = db.prepare(`
-        INSERT INTO users (username, password_hash, name, email, role, is_active)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-      insertAdmin.run('admin', adminPassword, '관리자', 'admin@example.com', 'admin', 1);
-      console.log('✅ 기본 관리자 계정 생성됨 (admin/admin123)');
-    }
-
-    // 테스트 학생 데이터 생성
-    const checkStudents = db.prepare('SELECT COUNT(*) as count FROM students');
-    if (checkStudents.get().count === 0) {
-      const insertStudent = db.prepare(`
-        INSERT INTO students (student_number, name, parent_phone, is_active)
-        VALUES (?, ?, ?, ?)
-      `);
-
-      insertStudent.run('STU001', '김철수', '010-1234-5678', 1);
-      insertStudent.run('STU002', '이영희', '010-2345-6789', 1);
-      insertStudent.run('STU003', '박민수', '010-3456-7890', 1);
-      console.log('✅ 테스트 학생 데이터 생성됨');
-    }
-
-    console.log('✅ SQLite 데이터베이스 초기화 완료');
-  } catch (error) {
-    console.error('❌ 데이터베이스 초기화 실패:', error);
-  }
-};
+// MySQL 연결 풀 생성
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 3306,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'lms_system',
+  charset: 'utf8mb4',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  acquireTimeout: 60000,
+  timeout: 60000
+});
 
 // 데이터베이스 연결 테스트
 const testConnection = async () => {
   try {
-    db.prepare('SELECT 1').get();
-    console.log('✅ SQLite 데이터베이스 연결 성공');
+    const connection = await pool.getConnection();
+    await connection.ping();
+    connection.release();
+    console.log('✅ MySQL 데이터베이스 연결 성공');
     return true;
   } catch (error) {
-    console.error('❌ SQLite 데이터베이스 연결 실패:', error.message);
+    console.error('❌ MySQL 데이터베이스 연결 실패:', error.message);
+    console.error('💡 확인사항:');
+    console.error('   1. MySQL 서비스가 실행 중인지 확인');
+    console.error('   2. .env 파일의 DB 설정 확인');
+    console.error('   3. 데이터베이스가 생성되었는지 확인');
     return false;
   }
 };
 
-// 쿼리 실행 헬퍼 함수 (MySQL 호환)
+// 쿼리 실행 헬퍼 함수
 const query = async (sql, params = []) => {
   try {
-    // MySQL -> SQLite 쿼리 변환
-    let sqliteQuery = sql
-      .replace(/NOW\(\)/g, 'CURRENT_TIMESTAMP')
-      .replace(/\?/g, '?')
-      .replace(/LIMIT \?, \?/g, 'LIMIT ? OFFSET ?');
-
-    if (sql.trim().toUpperCase().startsWith('SELECT')) {
-      const stmt = db.prepare(sqliteQuery);
-      const result = stmt.all(...params);
-      return result || [];
-    } else if (sql.trim().toUpperCase().startsWith('INSERT') ||
-               sql.trim().toUpperCase().startsWith('UPDATE') ||
-               sql.trim().toUpperCase().startsWith('DELETE')) {
-      const stmt = db.prepare(sqliteQuery);
-      const result = stmt.run(...params);
-      return { insertId: result.lastInsertRowid, affectedRows: result.changes };
-    } else {
-      const stmt = db.prepare(sqliteQuery);
-      const result = stmt.run(...params);
-      return result;
-    }
+    const [rows] = await pool.execute(sql, params);
+    return rows;
   } catch (error) {
     console.error('Database query error:', error);
     console.error('SQL:', sql);
@@ -136,27 +49,29 @@ const query = async (sql, params = []) => {
 
 // 트랜잭션 실행 헬퍼 함수
 const transaction = async (callback) => {
-  const trans = db.transaction(() => {
-    return callback({
-      execute: (sql, params) => {
-        const stmt = db.prepare(sql);
-        return [stmt.all(...params)];
-      }
-    });
-  });
+  const connection = await pool.getConnection();
+  await connection.beginTransaction();
 
   try {
-    return trans();
+    const result = await callback({
+      execute: async (sql, params) => {
+        const [rows] = await connection.execute(sql, params);
+        return [rows];
+      }
+    });
+
+    await connection.commit();
+    return result;
   } catch (error) {
+    await connection.rollback();
     throw error;
+  } finally {
+    connection.release();
   }
 };
 
-// 데이터베이스 초기화
-initDatabase();
-
 module.exports = {
-  db,
+  pool,
   query,
   transaction,
   testConnection
