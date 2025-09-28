@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "install": "npm install --legacy-peer-deps",
     "dev": "nodemon server.js",
     "test": "jest",
     "lint": "eslint .",
