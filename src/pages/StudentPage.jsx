@@ -54,6 +54,7 @@ const StudentPage = () => {
     department: '',
     phone: '',
     parentPhone: '',
+    attendanceNumber: '', // 4자리 출결번호 추가
     email: '',
     class: '',
     birthDate: '',
@@ -103,6 +104,7 @@ const StudentPage = () => {
       department: '',
       phone: '',
       parentPhone: '',
+      attendanceNumber: '',
       email: '',
       class: '',
       birthDate: '',
@@ -135,6 +137,7 @@ const StudentPage = () => {
         department: student.department || '',
         phone: student.phone || '',
         parentPhone: student.parentPhone || '',
+        attendanceNumber: student.attendanceNumber || '',
         email: student.email || '',
         class: student.class || '',
         birthDate: student.birthDate || '',
@@ -440,6 +443,21 @@ const StudentPage = () => {
       }
     },
     {
+      field: 'attendanceNumber',
+      headerName: '출결번호',
+      width: 100,
+      minWidth: 80,
+      maxWidth: 120,
+      resizable: true,
+      renderCell: (params) => {
+        return (
+          <Typography variant="body2" fontWeight="bold" color="primary" noWrap>
+            {params.value || '-'}
+          </Typography>
+        )
+      }
+    },
+    {
       field: 'paymentDueDate',
       headerName: '결제일',
       width: 120,
@@ -704,6 +722,25 @@ const StudentPage = () => {
                       value={formData.parentPhone}
                       onChange={handleInputChange('parentPhone')}
                       required
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="출결번호 *"
+                      value={formData.attendanceNumber}
+                      onChange={handleInputChange('attendanceNumber')}
+                      inputProps={{
+                        maxLength: 4,
+                        pattern: '[0-9]*'
+                      }}
+                      onInput={(e) => {
+                        // 숫자만 입력되도록 필터링
+                        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                      }}
+                      required
+                      helperText="4자리 숫자로 입력해주세요 (출결 인증용)"
+                      placeholder="1234"
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -999,7 +1036,7 @@ const StudentPage = () => {
           <Button
             onClick={handleSubmit}
             variant="contained"
-            disabled={editingStudent ? false : (!formData.name || !formData.parentPhone || formData.selectedClasses.length === 0 || !formData.paymentDueDate)}
+            disabled={editingStudent ? false : (!formData.name || !formData.parentPhone || !formData.attendanceNumber || formData.attendanceNumber.length !== 4 || formData.selectedClasses.length === 0 || !formData.paymentDueDate)}
           >
             {editingStudent ? '수정' : '추가'}
           </Button>

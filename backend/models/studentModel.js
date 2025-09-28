@@ -163,14 +163,49 @@ class StudentModel {
           ...basicData
         } = studentData;
 
+        // 출결번호 생성 (중복 확인)
+        let attendanceNumber = basicData.attendanceNumber;
+        if (!attendanceNumber) {
+          let isUnique = false;
+          let attempts = 0;
+
+          while (!isUnique && attempts < 100) {
+            attendanceNumber = Math.floor(1000 + Math.random() * 9000).toString();
+
+            const [existing] = await conn.execute(
+              'SELECT id FROM students WHERE attendance_number = ?',
+              [attendanceNumber]
+            );
+
+            if (existing.length === 0) {
+              isUnique = true;
+            }
+            attempts++;
+          }
+
+          if (!isUnique) {
+            throw new Error('고유한 출결번호 생성에 실패했습니다.');
+          }
+        } else {
+          // 사용자가 제공한 출결번호 중복 확인
+          const [existing] = await conn.execute(
+            'SELECT id FROM students WHERE attendance_number = ?',
+            [attendanceNumber]
+          );
+
+          if (existing.length > 0) {
+            throw new Error('이미 사용 중인 출결번호입니다.');
+          }
+        }
+
         // 학생 기본 정보 삽입
         const insertQuery = `
           INSERT INTO students (
-            name, school, grade, department, phone, parent_phone, email,
+            name, school, grade, department, phone, parent_phone, attendance_number, email,
             birth_date, address, notes, payment_due_date, send_payment_notification,
             profile_image_url, auto_attendance_msg, auto_outing_msg,
             auto_image_msg, auto_study_monitoring
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
@@ -180,6 +215,7 @@ class StudentModel {
           basicData.department || null,
           basicData.phone || null,
           basicData.parentPhone,
+          attendanceNumber,
           basicData.email || null,
           basicData.birthDate || null,
           basicData.address || null,
@@ -253,11 +289,23 @@ class StudentModel {
           ...basicData
         } = studentData;
 
+        // 출결번호 중복 확인 (수정 시)
+        if (basicData.attendanceNumber) {
+          const [existing] = await conn.execute(
+            'SELECT id FROM students WHERE attendance_number = ? AND id != ?',
+            [basicData.attendanceNumber, id]
+          );
+
+          if (existing.length > 0) {
+            throw new Error('이미 사용 중인 출결번호입니다.');
+          }
+        }
+
         // 학생 기본 정보 업데이트
         const updateQuery = `
           UPDATE students SET
             name = ?, school = ?, grade = ?, department = ?, phone = ?,
-            parent_phone = ?, email = ?, birth_date = ?, address = ?,
+            parent_phone = ?, attendance_number = ?, email = ?, birth_date = ?, address = ?,
             notes = ?, payment_due_date = ?, send_payment_notification = ?,
             profile_image_url = ?, auto_attendance_msg = ?, auto_outing_msg = ?,
             auto_image_msg = ?, auto_study_monitoring = ?, updated_at = NOW()
@@ -271,6 +319,7 @@ class StudentModel {
           basicData.department || null,
           basicData.phone || null,
           basicData.parentPhone,
+          basicData.attendanceNumber || null,
           basicData.email || null,
           basicData.birthDate || null,
           basicData.address || null,
@@ -407,6 +456,80 @@ class StudentModel {
       return result.count > 0;
     } catch (error) {
       console.error('StudentModel.exists error:', error);
+      throw error;
+    }
+  }
+
+  // 출결번호로 학생 조회
+  static async getStudentByAttendanceNumber(attendanceNumber) {
+    try {
+      const studentQuery = `
+        SELECT
+          s.*,
+          GROUP_CONCAT(
+            DISTINCT CONCAT(l.id, ':', l.name, ':', l.fee)
+            ORDER BY l.name
+            SEPARATOR '|'
+          ) as lecture_info
+        FROM students s
+        LEFT JOIN student_lectures sl ON s.id = sl.student_id AND sl.is_active = true
+        LEFT JOIN lectures l ON sl.lecture_id = l.id AND l.is_active = true
+        WHERE s.attendance_number = ? AND s.is_active = true
+        GROUP BY s.id
+      `;
+
+      const students = await query(studentQuery, [attendanceNumber]);
+      if (students.length === 0) {
+        return null;
+      }
+
+      const student = students[0];
+      const lectures = [];
+      let totalFee = 0;
+
+      if (student.lecture_info) {
+        const lectureInfos = student.lecture_info.split('|');
+        lectureInfos.forEach(info => {
+          const [lectureId, name, fee] = info.split(':');
+          lectures.push({ id: lectureId, name });
+          totalFee += parseInt(fee) || 0;
+        });
+      }
+
+      return {
+        ...student,
+        selectedClasses: lectures.map(l => l.id),
+        class: lectures.map(l => l.name).join(', ') || '미등록',
+        classFee: totalFee,
+        autoMessages: {
+          attendance: !!student.auto_attendance_msg,
+          outing: !!student.auto_outing_msg,
+          imagePost: !!student.auto_image_msg,
+          studyMonitoring: !!student.auto_study_monitoring
+        },
+        lecture_info: undefined
+      };
+    } catch (error) {
+      console.error('StudentModel.getStudentByAttendanceNumber error:', error);
+      throw error;
+    }
+  }
+
+  // 출결번호 중복 확인
+  static async checkAttendanceNumberExists(attendanceNumber, excludeId = null) {
+    try {
+      let query_str = 'SELECT COUNT(*) as count FROM students WHERE attendance_number = ? AND is_active = true';
+      let params = [attendanceNumber];
+
+      if (excludeId) {
+        query_str += ' AND id != ?';
+        params.push(excludeId);
+      }
+
+      const [result] = await query(query_str, params);
+      return result.count > 0;
+    } catch (error) {
+      console.error('StudentModel.checkAttendanceNumberExists error:', error);
       throw error;
     }
   }

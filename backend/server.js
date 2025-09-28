@@ -85,6 +85,9 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 // app.use('/api/announcements', require('./routes/announcements')); // 추후 구현 예정
 
+// 모바일 출결 API
+app.use('/api/mobile/attendance', require('./routes/mobile_attendance'));
+
 // 기존 GFKids 앱 호환용 레거시 API 라우터 연결
 app.use('/api/d/1.0', require('./routes/legacy_api'));
 
