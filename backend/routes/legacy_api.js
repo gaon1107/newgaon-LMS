@@ -266,6 +266,7 @@ router.post('/version', authenticateToken, async (req, res) => {
     // 버전 정보 (필요에 따라 데이터베이스에서 조회하도록 변경 가능)
     const versionData = {
       version: "1.0.0",
+      dataVersion: "1.0.0",  // 앱에서 필요한 데이터 버전 추가
       minVersion: "1.0.0",
       updateRequired: false,
       updateUrl: null,
@@ -535,6 +536,41 @@ router.post('/student/state/thumbnail/set', authenticateToken, async (req, res) 
     res.status(500).json(formatLegacyResponse(false, null, {
       code: 'INTERNAL_SERVER_ERROR',
       message: '상태 이미지 설정 중 오류가 발생했습니다.'
+    }));
+  }
+});
+
+/**
+ * @route   GET /api/d/1.0/test
+ * @desc    Flutter 앱 연동 테스트 API
+ * @access  Public
+ */
+router.get('/test', async (req, res) => {
+  try {
+    const testData = {
+      message: 'LMS Legacy API 테스트 성공!',
+      timestamp: new Date().toISOString(),
+      server: {
+        name: '학원관리 LMS 백엔드',
+        version: '1.0.0',
+        environment: process.env.NODE_ENV || 'development'
+      },
+      endpoints: {
+        login: '/api/d/1.0/login',
+        students: '/api/d/1.0/student/get/all',
+        attendance: '/api/d/1.0/student/state/set'
+      }
+    };
+
+    res.json(formatLegacyResponse(true, testData));
+
+    console.log('✅ Legacy API 테스트 요청 처리됨');
+
+  } catch (error) {
+    console.error('Legacy test API error:', error);
+    res.status(500).json(formatLegacyResponse(false, null, {
+      code: 'INTERNAL_SERVER_ERROR',
+      message: '테스트 API 처리 중 오류가 발생했습니다.'
     }));
   }
 });
