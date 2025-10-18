@@ -99,3 +99,9 @@ package-lock.json
 *.db
 *.db-shm
 *.db-wal
+
+# Uploads folder (user uploaded files)
+backend/uploads/
+
+# Log files
+backend/logs/
