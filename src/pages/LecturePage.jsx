@@ -233,9 +233,6 @@ const LecturePage = () => {
       field: 'name',
       headerName: '강의명',
       width: 150,
-      minWidth: 120,
-      maxWidth: 200,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" fontWeight="bold" noWrap>
@@ -248,9 +245,6 @@ const LecturePage = () => {
       field: 'instructor',
       headerName: '담당 강사',
       width: 120,
-      minWidth: 100,
-      maxWidth: 150,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
@@ -263,9 +257,6 @@ const LecturePage = () => {
       field: 'subject',
       headerName: '과목',
       width: 100,
-      minWidth: 80,
-      maxWidth: 150,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Chip label={params.value} size="small" />
@@ -276,9 +267,6 @@ const LecturePage = () => {
       field: 'schedule',
       headerName: '스케줄',
       width: 180,
-      minWidth: 150,
-      maxWidth: 250,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -294,9 +282,6 @@ const LecturePage = () => {
       field: 'fee',
       headerName: '비용',
       width: 120,
-      minWidth: 100,
-      maxWidth: 150,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" fontWeight="bold" color="primary" noWrap>
@@ -309,9 +294,6 @@ const LecturePage = () => {
       field: 'capacity',
       headerName: '수강 인원',
       width: 120,
-      minWidth: 100,
-      maxWidth: 150,
-      resizable: true,
       renderCell: (params) => {
         return getCapacityChip(params.row.currentStudents, params.value)
       }
@@ -320,9 +302,6 @@ const LecturePage = () => {
       field: 'students',
       headerName: '수강생',
       width: 200,
-      minWidth: 150,
-      maxWidth: 300,
-      resizable: true,
       sortable: false,
       filterable: false,
       renderCell: (params) => {
@@ -359,9 +338,6 @@ const LecturePage = () => {
       field: 'actions',
       headerName: '관리',
       width: 120,
-      minWidth: 100,
-      maxWidth: 150,
-      resizable: true,
       sortable: false,
       filterable: false,
       renderCell: (params) => {

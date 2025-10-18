@@ -14,10 +14,15 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = async () => {
     try {
       const token = authService.getAccessToken()
-      if (token) {
-        const userData = await authService.getCurrentUser()
-        setUser(userData)
+      if (!token) {
+        // 토큰이 없으면 바로 로딩 종료 (로그인하지 않은 상태)
+        setIsLoading(false)
+        return
       }
+
+      // 토큰이 있을 때만 사용자 정보 조회
+      const userData = await authService.getCurrentUser()
+      setUser(userData)
     } catch (error) {
       console.error('인증 상태 확인 실패:', error)
       authService.removeTokens()

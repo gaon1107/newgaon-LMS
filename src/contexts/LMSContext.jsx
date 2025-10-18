@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { studentService, lectureService } from '../services/apiService'
+import { authService } from '../services/authService'
 
 const LMSContext = createContext()
 
@@ -24,6 +25,15 @@ export const LMSProvider = ({ children }) => {
 
   // 데이터 로드 함수
   const loadData = useCallback(async () => {
+    // 로그인하지 않은 상태에서는 API 호출하지 않음
+    const token = authService.getAccessToken()
+    if (!token) {
+      setLoading(false)
+      setLectures([])
+      setStudents([])
+      return
+    }
+
     try {
       setLoading(true)
       setError(null)
@@ -38,16 +48,19 @@ export const LMSProvider = ({ children }) => {
         // 백엔드 API 응답 구조: { success: true, data: { students: [...], pagination: {...} } }
         const students = studentsData?.data?.students || []
         const lectures = lecturesData?.data?.lectures || []
-        
+
         setStudents(students)
         setLectures(lectures)
-        
+
         console.log('✅ API에서 데이터 로드 성공')
         console.log(`  - 학생: ${students.length}명`)
         console.log(`  - 강의: ${lectures.length}개`)
       } catch (apiError) {
-        console.log('⚠️ API 연결 실패, localStorage 사용')
-        
+        // 401 에러는 조용히 처리 (로그인하지 않은 상태)
+        if (apiError.response?.status !== 401) {
+          console.log('⚠️ API 연결 실패, localStorage 사용')
+        }
+
         // API 실패 시 localStorage에서 가져오기
         const savedLectures = localStorage.getItem('lms_lectures')
         const savedStudents = localStorage.getItem('lms_students')
@@ -67,7 +80,7 @@ export const LMSProvider = ({ children }) => {
     } catch (error) {
       console.error('❌ 데이터 로드 실패:', error)
       setError(error.message || '데이터를 불러오는데 실패했습니다.')
-      
+
       // 에러 발생 시 기본 데이터 사용
       setLectures(initialLectures)
       setStudents([])

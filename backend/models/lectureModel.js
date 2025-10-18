@@ -158,19 +158,20 @@ class LectureModel {
           ...basicData
         } = lectureData;
 
-        // 강의 기본 정보 삽입 (실제 테이블 구조에 맞춤)
+        // 강의 기본 정보 삽입 (실제 테이블 구조: id는 VARCHAR(50))
+        const lectureId = basicData.id || `lecture_${Date.now()}`;
+
         const insertQuery = `
           INSERT INTO lectures (
-            id, name, instructor_id, teacher_name, subject, 
+            id, name, teacher_name, subject,
             schedule, fee, capacity, description
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
-          basicData.id || `lecture_${Date.now()}`,
+          lectureId,
           basicData.name,
-          basicData.instructorId || null,
-          basicData.teacherName || null,
+          basicData.teacherName || basicData.teacher || basicData.instructor || null,
           basicData.subject || null,
           basicData.schedule || null,
           basicData.fee || 0,
@@ -178,8 +179,7 @@ class LectureModel {
           basicData.description || null
         ];
 
-        const [insertResult] = await conn.execute(insertQuery, insertParams);
-        const lectureId = basicData.id || insertResult.insertId;
+        await conn.execute(insertQuery, insertParams);
 
         // 강사-강의 연결은 lectures 테이블의 instructor_id 컬럼에서 처리됨 (불필요)
         // instructor_lectures 테이블 사용 안 함

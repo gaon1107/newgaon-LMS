@@ -15,14 +15,26 @@ export const useAttendance = () => {
 export const AttendanceProvider = ({ children }) => {
   // LMSContext에서 학생 데이터 가져오기
   const { students: lmsStudents, loading: lmsLoading } = useLMS()
-  
+
   // 출석 상태를 추가한 학생 목록
   const [students, setStudents] = useState([])
   const [attendanceRecords, setAttendanceRecords] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // 오늘 날짜
-  const today = new Date().toISOString().split('T')[0]
+  // 오늘 날짜를 항상 최신으로 가져오는 함수 (한국 시간 기준)
+  const getTodayDate = () => {
+    const now = new Date()
+    // 한국 시간대로 변환 (UTC+9)
+    const koreaTime = new Date(now.getTime() + (9 * 60 * 60 * 1000))
+    const dateStr = koreaTime.toISOString().split('T')[0]
+    console.log('🔍 [getTodayDate] 현재 시간:', {
+      로컬시간: now.toLocaleString('ko-KR'),
+      UTC시간: now.toISOString(),
+      한국시간: koreaTime.toISOString(),
+      반환날짜: dateStr
+    })
+    return dateStr
+  }
 
   // 상태 옵션 매핑
   const statusMapping = {
@@ -34,6 +46,31 @@ export const AttendanceProvider = ({ children }) => {
     'returned': '복귀',
     'left': '하원'
   }
+
+  // 자정에 자동으로 데이터 초기화
+  useEffect(() => {
+    const now = new Date()
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(0, 0, 0, 0)
+
+    const timeUntilMidnight = tomorrow.getTime() - now.getTime()
+
+    console.log(`⏰ 자정 자동 초기화 타이머 설정: ${Math.floor(timeUntilMidnight / 1000 / 60)}분 후`)
+
+    const midnightTimer = setTimeout(() => {
+      console.log('🌙 자정이 되었습니다! 출석 데이터를 초기화합니다.')
+      // 모든 학생을 미등원 상태로 초기화
+      setStudents([])
+      setAttendanceRecords([])
+      // 데이터 다시 로드
+      if (lmsStudents && lmsStudents.length > 0) {
+        loadTodayAttendance()
+      }
+    }, timeUntilMidnight)
+
+    return () => clearTimeout(midnightTimer)
+  }, [])
 
   // LMS 학생 데이터와 오늘의 출석 데이터를 결합
   useEffect(() => {
@@ -47,9 +84,10 @@ export const AttendanceProvider = ({ children }) => {
   // 오늘의 출석 데이터 로드
   const loadTodayAttendance = async () => {
     setLoading(true)
+    const today = getTodayDate() // 항상 최신 날짜 사용
     try {
       console.log('📅 오늘 출석 데이터 로딩 중...', today)
-      
+
       // 오늘 날짜의 출석 데이터 조회
       const response = await attendanceService.getAttendance(today)
       
@@ -171,6 +209,7 @@ export const AttendanceProvider = ({ children }) => {
       return
     }
 
+    const today = getTodayDate() // 항상 최신 날짜 사용
     const statusDescription = statusMapping[newStatus] || newStatus
     const currentTime = new Date()
     const checkTime = currentTime.toTimeString().split(' ')[0].substring(0, 5) // HH:MM 형식

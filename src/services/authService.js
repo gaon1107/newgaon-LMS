@@ -56,9 +56,9 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest)
         }
       } catch (refreshError) {
-        // 토큰 갱신 실패 시 로그아웃
+        // 토큰 갱신 실패 시 로그아웃 (홈페이지로 리다이렉트)
         removeTokens()
-        window.location.href = '/login'
+        window.location.href = '/'
       }
     }
 

@@ -249,9 +249,6 @@ const TeacherPage = () => {
       field: 'profileImage',
       headerName: '프로필',
       width: 80,
-      minWidth: 60,
-      maxWidth: 120,
-      resizable: true,
       sortable: false,
       filterable: false,
       renderCell: (params) => {
@@ -268,9 +265,6 @@ const TeacherPage = () => {
       field: 'name',
       headerName: '이름',
       width: 120,
-      minWidth: 80,
-      maxWidth: 200,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" fontWeight="bold" noWrap>
@@ -283,9 +277,6 @@ const TeacherPage = () => {
       field: 'department',
       headerName: '학과',
       width: 120,
-      minWidth: 100,
-      maxWidth: 180,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
@@ -298,9 +289,6 @@ const TeacherPage = () => {
       field: 'subject',
       headerName: '담당 과목',
       width: 200,
-      minWidth: 150,
-      maxWidth: 300,
-      resizable: true,
       renderCell: (params) => {
         if (!params.value) return <Typography variant="body2">-</Typography>
         
@@ -321,9 +309,6 @@ const TeacherPage = () => {
       field: 'lectures',
       headerName: '담당 강의',
       width: 180,
-      minWidth: 150,
-      maxWidth: 250,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
@@ -336,9 +321,6 @@ const TeacherPage = () => {
       field: 'phone',
       headerName: '연락처',
       width: 140,
-      minWidth: 120,
-      maxWidth: 180,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
@@ -351,9 +333,6 @@ const TeacherPage = () => {
       field: 'email',
       headerName: '이메일',
       width: 180,
-      minWidth: 150,
-      maxWidth: 250,
-      resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
@@ -366,9 +345,6 @@ const TeacherPage = () => {
       field: 'status',
       headerName: '상태',
       width: 100,
-      minWidth: 80,
-      maxWidth: 120,
-      resizable: true,
       renderCell: (params) => {
         const statusMap = {
           active: { label: '재직', color: 'success' },
@@ -390,9 +366,6 @@ const TeacherPage = () => {
       field: 'actions',
       headerName: '관리',
       width: 120,
-      minWidth: 100,
-      maxWidth: 150,
-      resizable: true,
       sortable: false,
       filterable: false,
       renderCell: (params) => {
