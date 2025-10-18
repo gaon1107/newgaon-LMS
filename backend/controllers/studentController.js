@@ -4,12 +4,14 @@ const StudentModel = require('../models/studentModel');
 const getStudents = async (req, res) => {
   try {
     const { page, limit, search, classId } = req.query;
+    const tenantId = req.user?.tenant_id; // ✅ 요청자의 tenant_id 가져오기
 
     const result = await StudentModel.getStudents({
       page,
       limit,
       search,
-      classId
+      classId,
+      tenantId // ✅ tenant_id 전달!
     });
 
     res.json({
@@ -73,6 +75,12 @@ const getStudentById = async (req, res) => {
 const createStudent = async (req, res) => {
   try {
     const studentData = req.body;
+    const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
+
+    console.log('🔍 학생 추가 요청 받음:');
+    console.log('  - 받은 출결번호:', studentData.attendanceNumber);
+    console.log('  - tenant_id:', tenantId);
+    console.log('  - 전체 데이터:', JSON.stringify(studentData, null, 2));
 
     // 학부모 연락처 중복 확인 (선택사항)
     // const existingStudent = await StudentModel.getByParentPhone(studentData.parentPhone);
@@ -86,7 +94,11 @@ const createStudent = async (req, res) => {
     //   });
     // }
 
-    const student = await StudentModel.createStudent(studentData);
+    const student = await StudentModel.createStudent(studentData, tenantId);
+
+    console.log('🔍 DB에 저장 후 반환된 학생 정보:');
+    console.log('  - 이름:', student.name);
+    console.log('  - 출결번호:', student.attendanceNumber);
 
     res.status(201).json({
       success: true,
@@ -95,7 +107,7 @@ const createStudent = async (req, res) => {
       }
     });
 
-    console.log(`✅ 학생 추가 완료: ${student.name} (ID: ${student.id})`);
+    console.log(`✅ 학생 추가 완료: ${student.name} (ID: ${student.id}) - 출결번호: ${student.attendanceNumber}`);
 
   } catch (error) {
     console.error('createStudent error:', error);
@@ -127,6 +139,11 @@ const updateStudent = async (req, res) => {
     const { id } = req.params;
     const studentData = req.body;
 
+    console.log('🔍 학생 수정 요청 받음:');
+    console.log('  - ID:', id);
+    console.log('  - 받은 출결번호:', studentData.attendanceNumber);
+    console.log('  - 전체 데이터:', JSON.stringify(studentData, null, 2));
+
     // 학생 존재 확인
     const exists = await StudentModel.exists(id);
     if (!exists) {
@@ -141,6 +158,11 @@ const updateStudent = async (req, res) => {
 
     const student = await StudentModel.updateStudent(id, studentData);
 
+    console.log('🔍 DB에서 업데이트 후 반환된 학생 정보:');
+    console.log('  - 이름:', student.name);
+    console.log('  - 출결번호:', student.attendanceNumber);
+    console.log('  - 전체:', JSON.stringify(student, null, 2));
+
     res.json({
       success: true,
       data: {
@@ -148,7 +170,7 @@ const updateStudent = async (req, res) => {
       }
     });
 
-    console.log(`✅ 학생 정보 수정 완료: ${student.name} (ID: ${id})`);
+    console.log(`✅ 학생 정보 수정 완료: ${student.name} (ID: ${id}) - 출결번호: ${student.attendanceNumber}`);
 
   } catch (error) {
     console.error('updateStudent error:', error);

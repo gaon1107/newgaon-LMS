@@ -30,39 +30,14 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true)
 
-      // 데모 모드: 백엔드 서버가 없을 때 임시 로그인
-      if (credentials.username === 'admin' && credentials.password === 'admin') {
-        const mockUser = {
-          id: 1,
-          username: 'admin',
-          name: '관리자',
-          role: 'admin'
-        }
-        setUser(mockUser)
-        return { success: true }
-      }
-
-      // 슈퍼관리자 계정 (newgaon)
-      if (credentials.username === 'newgaon' && credentials.password === 'newgaon') {
-        const superAdminUser = {
-          id: 0,
-          username: 'newgaon',
-          name: '뉴가온 슈퍼관리자',
-          role: 'superadmin'
-        }
-        setUser(superAdminUser)
-        return { success: true }
-      }
-
       // 실제 API 호출
       const response = await authService.login(credentials)
 
-      // 토큰 저장
+      // 토큰 저장 (response 객체에서 직접 가져오기)
       authService.setTokens(response.accessToken, response.refreshToken)
 
-      // 사용자 정보 가져오기
-      const userData = await authService.getCurrentUser()
-      setUser(userData)
+      // 사용자 정보 설정 (API 응답에 포함됨)
+      setUser(response.user)
 
       return { success: true }
     } catch (error) {

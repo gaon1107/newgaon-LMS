@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import { useLMS } from './LMSContext'
+import { attendanceService } from '../services/apiService'
 
 const AttendanceContext = createContext()
 
@@ -11,163 +13,16 @@ export const useAttendance = () => {
 }
 
 export const AttendanceProvider = ({ children }) => {
-  // 학생 목록 상태
-  const [students, setStudents] = useState([
-    {
-      id: 1,
-      name: '김철수',
-      identifier: 'STU001',
-      className: '수학 A반',
-      status: 'present',
-      statusDescription: '등원',
-      lastUpdate: '2024-01-15 09:15',
-      profileImage: '/api/placeholder/60/60'
-    },
-    {
-      id: 2,
-      name: '이영희',
-      identifier: 'STU002',
-      className: '수학 A반',
-      status: 'absent',
-      statusDescription: '미등원',
-      lastUpdate: null,
-      profileImage: '/api/placeholder/60/60'
-    },
-    {
-      id: 3,
-      name: '박민수',
-      identifier: 'STU003',
-      className: '영어 B반',
-      status: 'present',
-      statusDescription: '등원',
-      lastUpdate: '2024-01-15 08:45',
-      profileImage: '/api/placeholder/60/60'
-    },
-    {
-      id: 4,
-      name: '최지은',
-      identifier: 'STU004',
-      className: '영어 B반',
-      status: 'early_leave',
-      statusDescription: '조퇴',
-      lastUpdate: '2024-01-15 14:30',
-      profileImage: '/api/placeholder/60/60'
-    },
-    {
-      id: 5,
-      name: '정현우',
-      identifier: 'STU005',
-      className: '수학 A반',
-      status: 'present',
-      statusDescription: '등원',
-      lastUpdate: '2024-01-15 09:00',
-      profileImage: '/api/placeholder/60/60'
-    },
-    {
-      id: 6,
-      name: '한미래',
-      identifier: 'STU006',
-      className: '영어 B반',
-      status: 'late',
-      statusDescription: '지각',
-      lastUpdate: '2024-01-15 10:15',
-      profileImage: '/api/placeholder/60/60'
-    }
-  ])
+  // LMSContext에서 학생 데이터 가져오기
+  const { students: lmsStudents, loading: lmsLoading } = useLMS()
+  
+  // 출석 상태를 추가한 학생 목록
+  const [students, setStudents] = useState([])
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+  const [loading, setLoading] = useState(false)
 
-  // 출석 기록 상태
-  const [attendanceRecords, setAttendanceRecords] = useState([
-    {
-      id: 1,
-      studentName: '김철수',
-      className: '수학 A반',
-      stateDescription: '등원',
-      taggedAt: '2025-01-19 08:45:23',
-      isKeypad: false,
-      processTime: 1.2,
-      isForced: false,
-      isModified: false,
-      isDelayed: false,
-      comment: '정상 등원',
-      deviceId: 'DEVICE-001',
-      thumbnailData: '/api/images/thumbnail/1.jpg'
-    },
-    {
-      id: 2,
-      studentName: '이영희',
-      className: '수학 A반',
-      stateDescription: '하원',
-      taggedAt: '2025-01-19 17:30:15',
-      isKeypad: true,
-      processTime: 0.8,
-      isForced: false,
-      isModified: true,
-      isDelayed: false,
-      comment: '키패드로 하원 처리',
-      deviceId: 'DEVICE-002',
-      thumbnailData: null
-    },
-    {
-      id: 3,
-      studentName: '박민수',
-      className: '영어 B반',
-      stateDescription: '등원',
-      taggedAt: '2025-01-19 09:15:42',
-      isKeypad: false,
-      processTime: 2.1,
-      isForced: true,
-      isModified: false,
-      isDelayed: true,
-      comment: '지각 등원',
-      deviceId: 'DEVICE-001',
-      thumbnailData: '/api/images/thumbnail/3.jpg'
-    },
-    {
-      id: 4,
-      studentName: '최지은',
-      className: '영어 B반',
-      stateDescription: '조퇴',
-      taggedAt: '2025-01-19 14:30:10',
-      isKeypad: null,
-      processTime: 0,
-      isForced: false,
-      isModified: true,
-      isDelayed: false,
-      comment: '몸이 아파서 조퇴',
-      deviceId: '',
-      thumbnailData: null
-    },
-    {
-      id: 5,
-      studentName: '정현우',
-      className: '수학 A반',
-      stateDescription: '등원',
-      taggedAt: '2025-01-19 09:00:25',
-      isKeypad: false,
-      processTime: 1.5,
-      isForced: false,
-      isModified: false,
-      isDelayed: false,
-      comment: '정상 등원',
-      deviceId: 'DEVICE-003',
-      thumbnailData: '/api/images/thumbnail/5.jpg'
-    },
-    {
-      id: 6,
-      studentName: '한미래',
-      className: '영어 B반',
-      stateDescription: '지각',
-      taggedAt: '2025-01-19 10:15:25',
-      isKeypad: false,
-      processTime: 1.5,
-      isForced: true,
-      isModified: false,
-      isDelayed: true,
-      comment: '늦게 등원',
-      deviceId: 'DEVICE-003',
-      thumbnailData: '/api/images/thumbnail/6.jpg'
-    }
-  ])
+  // 오늘 날짜
+  const today = new Date().toISOString().split('T')[0]
 
   // 상태 옵션 매핑
   const statusMapping = {
@@ -180,48 +35,233 @@ export const AttendanceProvider = ({ children }) => {
     'left': '하원'
   }
 
-  // 학생 상태 업데이트 함수
-  const updateStudentStatus = (studentId, newStatus, comment = '') => {
-    const student = students.find(s => s.id === studentId)
-    if (!student) return
+  // LMS 학생 데이터와 오늘의 출석 데이터를 결합
+  useEffect(() => {
+    if (lmsStudents && lmsStudents.length > 0) {
+      loadTodayAttendance()
+    } else {
+      setStudents([])
+    }
+  }, [lmsStudents])
 
-    const statusDescription = statusMapping[newStatus] || newStatus
-    const currentTime = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  // 오늘의 출석 데이터 로드
+  const loadTodayAttendance = async () => {
+    setLoading(true)
+    try {
+      console.log('📅 오늘 출석 데이터 로딩 중...', today)
+      
+      // 오늘 날짜의 출석 데이터 조회
+      const response = await attendanceService.getAttendance(today)
+      
+      if (response.success) {
+        const todayAttendance = response.data.attendance || []
+        console.log('✅ 출석 데이터 로딩 성공:', todayAttendance)
+        
+        // 학생 ID별로 출석 상태를 매핑
+        const attendanceMap = {}
+        todayAttendance.forEach(record => {
+          attendanceMap[record.student_id] = {
+            status: record.status,
+            checkInTime: record.check_in_time,
+            checkOutTime: record.check_out_time,
+            notes: record.notes,
+            lastUpdate: record.created_at
+          }
+        })
+        
+        // LMS 학생 데이터와 출석 데이터 결합
+        const formattedStudents = lmsStudents.map(student => {
+          const attendance = attendanceMap[student.id] || {}
+          const status = attendance.status || 'absent'
+          
+          return {
+            id: student.id,
+            name: student.name,
+            identifier: student.attendance_number || student.attendanceNumber || `STU${String(student.id).padStart(3, '0')}`,
+            className: student.class || '미등록',
+            status: status,
+            statusDescription: statusMapping[status] || status,
+            lastUpdate: attendance.lastUpdate || null,
+            checkInTime: attendance.checkInTime || null,
+            checkOutTime: attendance.checkOutTime || null,
+            notes: attendance.notes || '',
+            profileImage: student.profileImage || student.profile_image_url || null,
+            phone: student.phone,
+            parentPhone: student.parentPhone || student.parent_phone
+          }
+        })
+        
+        setStudents(formattedStudents)
+        
+        // 출석 기록도 설정 (최근 활동 표시용)
+        const records = todayAttendance.map(record => {
+          // 시간 값 생성 (check_in_time이 있으면 사용, 없으면 created_at 사용)
+          let taggedAt = record.created_at || new Date().toISOString()
 
-    // 학생 상태 업데이트
-    setStudents(prevStudents =>
-      prevStudents.map(s =>
-        s.id === studentId
-          ? {
-              ...s,
-              status: newStatus,
-              statusDescription: statusDescription,
-              lastUpdate: currentTime
+          if (record.check_in_time) {
+            // check_in_time은 HH:MM 또는 HH:MM:SS 형식이므로 오늘 날짜와 결합
+            const today = new Date().toISOString().split('T')[0]
+            const timeStr = record.check_in_time
+            // 이미 초(SS)가 포함되어 있는지 확인
+            if (timeStr.split(':').length === 2) {
+              // HH:MM 형식이면 :00 추가
+              taggedAt = `${today}T${timeStr}:00`
+            } else {
+              // HH:MM:SS 형식이면 그대로 사용
+              taggedAt = `${today}T${timeStr}`
             }
-          : s
-      )
-    )
+          } else if (record.check_out_time) {
+            // check_in_time이 없으면 check_out_time 사용
+            const today = new Date().toISOString().split('T')[0]
+            const timeStr = record.check_out_time
+            if (timeStr.split(':').length === 2) {
+              taggedAt = `${today}T${timeStr}:00`
+            } else {
+              taggedAt = `${today}T${timeStr}`
+            }
+          }
 
-    // 출석 기록에 새 항목 추가
-    const newRecord = {
-      id: attendanceRecords.length + Date.now(), // 임시 ID 생성
-      studentName: student.name,
-      className: student.className,
-      stateDescription: statusDescription,
-      taggedAt: currentTime,
-      isKeypad: null, // 관리자가 직접 변경
-      processTime: 0,
-      isForced: false,
-      isModified: true, // 관리자가 수정함
-      isDelayed: false,
-      comment: comment || `관리자가 ${statusDescription}로 상태 변경`,
-      deviceId: '',
-      thumbnailData: null
+          return {
+            id: record.id,
+            studentName: record.student_name,
+            className: record.lecture_name || '학원 출석',
+            stateDescription: statusMapping[record.status] || record.status,
+            taggedAt: taggedAt,
+            isKeypad: null,
+            processTime: 0,
+            isForced: false,
+            isModified: true,
+            isDelayed: false,
+            comment: record.notes || '',
+            deviceId: '',
+            thumbnailData: null
+          }
+        })
+        
+        setAttendanceRecords(records)
+      }
+    } catch (error) {
+      console.error('❌ 출석 데이터 로딩 실패:', error)
+      
+      // 오류 발생 시 기본 데이터로 설정
+      const formattedStudents = lmsStudents.map(student => ({
+        id: student.id,
+        name: student.name,
+        identifier: student.attendance_number || student.attendanceNumber || `STU${String(student.id).padStart(3, '0')}`,
+        className: student.class || '미등록',
+        status: 'absent',
+        statusDescription: '미등원',
+        lastUpdate: null,
+        profileImage: student.profileImage || student.profile_image_url || null,
+        phone: student.phone,
+        parentPhone: student.parentPhone || student.parent_phone
+      }))
+      setStudents(formattedStudents)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 학생 상태 업데이트 함수 (MySQL에 저장)
+  // ✅ lectureId 파라미터 제거 - 학원 출석은 강의와 무관
+  const updateStudentStatus = async (studentId, newStatus, comment = '') => {
+    const student = students.find(s => s.id === studentId)
+    if (!student) {
+      console.error('학생을 찾을 수 없습니다:', studentId)
+      return
     }
 
-    setAttendanceRecords(prevRecords => [newRecord, ...prevRecords])
+    const statusDescription = statusMapping[newStatus] || newStatus
+    const currentTime = new Date()
+    const checkTime = currentTime.toTimeString().split(' ')[0].substring(0, 5) // HH:MM 형식
 
-    console.log(`${student.name}의 상태를 ${statusDescription}로 변경하였습니다.`, comment ? `참고: ${comment}` : '')
+    try {
+      console.log('📝 출석 상태 업데이트 중...', {
+        studentId,
+        date: today,
+        status: newStatus,
+        type: '학원 출석 (강의 무관)'
+      })
+
+      // ✅ MySQL에 출석 상태 저장 (lectureId 없이)
+      // checkInTime: 등원, 지각, 복귀 시 현재 시간 저장
+      // checkOutTime: 하원, 외출 시 현재 시간 저장
+      const response = await attendanceService.updateAttendanceStatus(
+        studentId,
+        today,
+        {
+          // lectureId 제거 - 학원 출석이므로 불필요
+          status: newStatus,
+          checkInTime: ['present', 'late', 'returned'].includes(newStatus) ? checkTime : null,
+          checkOutTime: ['left', 'out', 'early_leave'].includes(newStatus) ? checkTime : null,
+          notes: comment
+        }
+      )
+
+      if (response.success) {
+        console.log('✅ 출석 상태 MySQL 저장 성공!')
+
+        // 로컬 상태도 업데이트
+        setStudents(prevStudents =>
+          prevStudents.map(s =>
+            s.id === studentId
+              ? {
+                  ...s,
+                  status: newStatus,
+                  statusDescription: statusDescription,
+                  lastUpdate: currentTime.toISOString(),
+                  checkInTime: ['present', 'late', 'returned'].includes(newStatus) ? checkTime : s.checkInTime,
+                  checkOutTime: ['left', 'out', 'early_leave'].includes(newStatus) ? checkTime : s.checkOutTime,
+                  notes: comment
+                }
+              : s
+          )
+        )
+
+        // 출석 기록에 새 항목 추가
+        const newRecord = {
+          id: Date.now(),
+          studentName: student.name,
+          className: student.className,
+          stateDescription: statusDescription,
+          taggedAt: currentTime.toISOString(),
+          isKeypad: null,
+          processTime: 0,
+          isForced: false,
+          isModified: true,
+          isDelayed: false,
+          comment: comment || `관리자가 ${statusDescription}로 상태 변경`,
+          deviceId: '',
+          thumbnailData: null
+        }
+
+        setAttendanceRecords(prevRecords => [newRecord, ...prevRecords])
+
+        console.log(`✅ ${student.name}의 상태를 ${statusDescription}로 변경하였습니다.`)
+      }
+    } catch (error) {
+      console.error('❌ 출석 상태 업데이트 실패:', error)
+      // ✅ 사용자에게 에러 알림
+      alert(`출석 상태 업데이트 실패: ${error.response?.data?.error?.message || error.message}`)
+      throw error
+    }
+  }
+
+  // 출석 통계 조회
+  const getAttendanceStats = async (startDate, endDate, classId = null) => {
+    try {
+      console.log('📊 출석 통계 조회 중...', { startDate, endDate, classId })
+      
+      const response = await attendanceService.getAttendanceStats(startDate, endDate, classId)
+      
+      if (response.success) {
+        console.log('✅ 출석 통계 조회 성공:', response.data)
+        return response.data
+      }
+    } catch (error) {
+      console.error('❌ 출석 통계 조회 실패:', error)
+      throw error
+    }
   }
 
   const value = {
@@ -230,7 +270,10 @@ export const AttendanceProvider = ({ children }) => {
     attendanceRecords,
     setAttendanceRecords,
     updateStudentStatus,
-    statusMapping
+    getAttendanceStats,
+    loadTodayAttendance,
+    statusMapping,
+    loading: loading || lmsLoading
   }
 
   return (

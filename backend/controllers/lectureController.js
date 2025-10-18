@@ -141,6 +141,10 @@ class LectureController {
       const { id } = req.params;
       const lectureData = req.body;
 
+      console.log('🔍 강의 수정 요청:');
+      console.log('  - ID:', id);
+      console.log('  - 받은 데이터:', JSON.stringify(lectureData, null, 2));
+
       // 강의 존재 확인
       const exists = await LectureModel.exists(id);
       if (!exists) {

@@ -116,7 +116,15 @@ export const authService = {
   // 현재 사용자 정보 가져오기
   getCurrentUser: async () => {
     const response = await apiClient.get('/user')
-    return response.data.data.userInfo
+    // 백엔드 응답 형식에 맞게 수정
+    if (response.data && response.data.data && response.data.data.userInfo) {
+      return response.data.data.userInfo
+    }
+    // camelCase 형식도 지원
+    if (response.data && response.data.user) {
+      return response.data.user
+    }
+    throw new Error('사용자 정보를 찾을 수 없습니다.')
   },
 
   // 토큰 갱신

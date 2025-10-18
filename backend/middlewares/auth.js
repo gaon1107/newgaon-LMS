@@ -6,7 +6,8 @@ const generateTokens = (user) => {
   const payload = {
     id: user.id,
     username: user.username,
-    role: user.role
+    role: user.role,
+    tenant_id: user.tenant_id  // ✅ tenant_id 추가
   };
 
   const accessToken = jwt.sign(
@@ -43,9 +44,9 @@ const authenticateToken = async (req, res, next) => {
     // 토큰 검증
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 사용자 정보 조회 (활성 상태 확인)
+    // 사용자 정보 조회 (활성 상태 확인) - tenant_id 포함
     const users = await query(
-      'SELECT id, username, name, email, role, is_active FROM users WHERE id = ? AND is_active = true',
+      'SELECT id, username, name, email, role, is_active, tenant_id FROM users WHERE id = ? AND is_active = true',
       [decoded.id]
     );
 
@@ -59,7 +60,7 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // 요청 객체에 사용자 정보 추가
+    // 요청 객체에 사용자 정보 추가 (tenant_id 포함)
     req.user = users[0];
     next();
 

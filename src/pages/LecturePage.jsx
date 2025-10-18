@@ -34,6 +34,8 @@ import {
   Schedule as ScheduleIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../components/common/DraggableDialog'
+import { instructorService } from '../services/apiService'
+import { formatCurrency, parseCurrency } from '../utils/formatters'
 
 const LecturePage = () => {
   const { lectures, students, addLecture, updateLecture, deleteLecture, updateStudent } = useLMS()
@@ -44,7 +46,9 @@ const LecturePage = () => {
 
   const [formData, setFormData] = useState({
     name: '',
-    teacher: '',
+    teacher: '', // 표시용 (강사 이름)
+    instructorId: '', // 백엔드 전송용 (강사 ID)
+    teacherName: '', // 백엔드 전송용 (강사 이름)
     subject: '',
     schedule: '',
     fee: '',
@@ -54,11 +58,26 @@ const LecturePage = () => {
   })
 
   const [selectedStudents, setSelectedStudents] = useState([])
+  const [teachers, setTeachers] = useState([]) // 실제 강사 목록
 
   // Context에서 강의 데이터를 가져오므로 mock 데이터 불필요
-
-  const mockTeachers = ['박선생', '김선생', '이선생']
   const mockSubjects = ['수학', '영어', '과학', '국어', '사회']
+
+  // 강사 목록 로드
+  useEffect(() => {
+    loadTeachers()
+  }, [])
+
+  const loadTeachers = async () => {
+    try {
+      const response = await instructorService.getInstructors(1, 100, '')
+      if (response.success) {
+        setTeachers(response.data.instructors || [])
+      }
+    } catch (error) {
+      console.error('강사 목록 로딩 실패:', error)
+    }
+  }
 
   // Context에서 강의 데이터를 가져오므로 별도 로딩 불필요
 
@@ -66,6 +85,8 @@ const LecturePage = () => {
     setFormData({
       name: '',
       teacher: '',
+      instructorId: '',
+      teacherName: '',
       subject: '',
       schedule: '',
       fee: '',
@@ -81,9 +102,12 @@ const LecturePage = () => {
       setEditingLecture(lecture)
       setFormData({
         ...lecture,
+        teacher: lecture.teacher || lecture.teacherName || lecture.instructor || '',
+        instructorId: lecture.instructor_id || lecture.instructorId || '',
+        teacherName: lecture.teacher_name || lecture.teacherName || lecture.teacher || '',
         capacity: lecture.capacity.toString(),
         currentStudents: lecture.currentStudents.toString(),
-        fee: lecture.fee ? lecture.fee.toString() : ''
+        fee: lecture.fee ? formatCurrency(lecture.fee.toString()) : ''
       })
       // 현재 강의에 등록된 학생들을 선택된 학생 목록으로 설정
       const enrolledStudents = getStudentsForLecture(lecture.id)
@@ -102,9 +126,28 @@ const LecturePage = () => {
   }
 
   const handleInputChange = (field) => (event) => {
+    let value = event.target.value
+
+    // 금액 필드 자동 포맷팅
+    if (field === 'fee') {
+      value = formatCurrency(value)
+    }
+
+    // 강사 선택 시 instructorId와 teacherName 저장
+    if (field === 'teacher') {
+      const selectedTeacher = teachers.find(t => t.name === value)
+      setFormData(prev => ({
+        ...prev,
+        teacher: value,
+        instructorId: selectedTeacher?.id || '',
+        teacherName: selectedTeacher?.name || value
+      }))
+      return
+    }
+
     setFormData(prev => ({
       ...prev,
-      [field]: event.target.value
+      [field]: value
     }))
   }
 
@@ -112,56 +155,29 @@ const LecturePage = () => {
     event.preventDefault()
 
     try {
+      // 백엔드가 필요로 하는 형식으로 데이터 변환
       const lectureData = {
-        ...formData,
+        name: formData.name,
+        subject: formData.subject,
+        description: formData.description,
+        schedule: formData.schedule,
         capacity: parseInt(formData.capacity),
-        currentStudents: parseInt(formData.currentStudents),
-        fee: parseInt(formData.fee)
+        currentStudents: selectedStudents.length, // 선택된 학생 수로 설정
+        fee: parseCurrency(formData.fee),
+        // 백엔드 필드명에 맞춰서 전송
+        instructorId: formData.instructorId || null,
+        teacherName: formData.teacherName || formData.teacher,
+        instructor: formData.teacher, // 표시용
+        teacher: formData.teacher, // DB 저장용
+        enrolledStudents: selectedStudents // ✅ 선택된 학생 ID 배열 전달
       }
 
       if (editingLecture) {
         console.log('강의 수정:', lectureData)
-        updateLecture(editingLecture.id, lectureData)
-
-        // 학생 등록 정보 업데이트
-        students.forEach(student => {
-          const currentlyEnrolled = student.selectedClasses && student.selectedClasses.includes(editingLecture.id)
-          const shouldBeEnrolled = selectedStudents.includes(student.id)
-
-          if (currentlyEnrolled !== shouldBeEnrolled) {
-            let updatedClasses = student.selectedClasses || []
-
-            if (shouldBeEnrolled) {
-              // 학생을 강의에 추가
-              updatedClasses = [...updatedClasses, editingLecture.id]
-            } else {
-              // 학생을 강의에서 제거
-              updatedClasses = updatedClasses.filter(classId => classId !== editingLecture.id)
-            }
-
-            updateStudent(student.id, {
-              ...student,
-              selectedClasses: updatedClasses
-            })
-          }
-        })
+        await updateLecture(editingLecture.id, lectureData)
       } else {
         console.log('강의 추가:', lectureData)
-        const newLecture = addLecture(lectureData)
-
-        // 새 강의에 선택된 학생들 등록
-        if (selectedStudents.length > 0) {
-          selectedStudents.forEach(studentId => {
-            const student = students.find(s => s.id === studentId)
-            if (student) {
-              const updatedClasses = student.selectedClasses || []
-              updateStudent(studentId, {
-                ...student,
-                selectedClasses: [...updatedClasses, newLecture.id]
-              })
-            }
-          })
-        }
+        await addLecture(lectureData)
       }
 
       handleCloseDialog()
@@ -182,9 +198,10 @@ const LecturePage = () => {
   }
 
   const filteredLectures = lectures.filter(lecture =>
-    lecture.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lecture.teacher.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lecture.subject.toLowerCase().includes(searchTerm.toLowerCase())
+    lecture.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lecture.instructor?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lecture.teacher?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    lecture.subject?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const getStudentsForLecture = (lectureId) => {
@@ -228,7 +245,7 @@ const LecturePage = () => {
       }
     },
     {
-      field: 'teacher',
+      field: 'instructor',
       headerName: '담당 강사',
       width: 120,
       minWidth: 100,
@@ -283,7 +300,7 @@ const LecturePage = () => {
       renderCell: (params) => {
         return (
           <Typography variant="body2" fontWeight="bold" color="primary" noWrap>
-            {params.value ? `${params.value.toLocaleString()}원` : '-'}
+            {params.value ? `${Math.round(params.value).toLocaleString()}원` : '-'}
           </Typography>
         )
       }
@@ -525,25 +542,9 @@ const LecturePage = () => {
                     onChange={handleInputChange('teacher')}
                     label="담당 강사 *"
                   >
-                    {mockTeachers.map((teacher) => (
-                      <MenuItem key={teacher} value={teacher}>
-                        {teacher}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>과목 *</InputLabel>
-                  <Select
-                    value={formData.subject}
-                    onChange={handleInputChange('subject')}
-                    label="과목 *"
-                  >
-                    {mockSubjects.map((subject) => (
-                      <MenuItem key={subject} value={subject}>
-                        {subject}
+                    {teachers.map((teacher) => (
+                      <MenuItem key={teacher.id} value={teacher.name}>
+                        {teacher.name} ({teacher.department || '부서 미지정'})
                       </MenuItem>
                     ))}
                   </Select>
@@ -552,14 +553,22 @@ const LecturePage = () => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
+                  label="과목 *"
+                  value={formData.subject}
+                  onChange={handleInputChange('subject')}
+                  placeholder="예: 수학, 영어, 과학"
+                  helperText="과목명을 직접 입력하세요"
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
                   label="비용 (월 수강료) *"
-                  type="number"
                   value={formData.fee}
                   onChange={handleInputChange('fee')}
-                  InputProps={{
-                    endAdornment: '원'
-                  }}
-                  helperText="월 수강료를 입력하세요"
+                  placeholder="예: 180,000"
+                  helperText="자동으로 천 단위 콤마가 추가됩니다"
                   required
                 />
               </Grid>

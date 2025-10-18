@@ -38,7 +38,7 @@ import {
 import DraggableDialog from '../components/common/DraggableDialog'
 
 const StudentPage = () => {
-  const { students, lectures, addStudent, updateStudent, deleteStudent } = useLMS()
+  const { students, lectures, loading, error, addStudent, updateStudent, deleteStudent, refreshData } = useLMS()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedClass, setSelectedClass] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -76,13 +76,74 @@ const StudentPage = () => {
     }
   })
 
+  // 전화번호 포맷팅 함수
+  const formatPhoneNumber = (value) => {
+    // 숫자만 추출
+    const numbers = value.replace(/[^0-9]/g, '')
+    
+    // 빈 문자열이면 그대로 반환
+    if (!numbers) return ''
+    
+    // 010으로 시작하는 경우 (11자리)
+    if (numbers.startsWith('010')) {
+      if (numbers.length <= 3) {
+        return numbers
+      } else if (numbers.length <= 7) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+      } else if (numbers.length <= 11) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
+      } else {
+        // 11자리 초과시 잘라내기
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
+      }
+    }
+    // 011, 016, 017, 018, 019로 시작하는 경우
+    else if (numbers.startsWith('011') || numbers.startsWith('016') || numbers.startsWith('017') || numbers.startsWith('018') || numbers.startsWith('019')) {
+      if (numbers.length <= 3) {
+        return numbers
+      } else if (numbers.length <= 7) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+      } else if (numbers.length <= 11) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
+      } else {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
+      }
+    }
+    // 02로 시작하는 경우 (서울)
+    else if (numbers.startsWith('02')) {
+      if (numbers.length <= 2) {
+        return numbers
+      } else if (numbers.length <= 5) {
+        return `${numbers.slice(0, 2)}-${numbers.slice(2)}`
+      } else if (numbers.length <= 9) {
+        return `${numbers.slice(0, 2)}-${numbers.slice(2, 5)}-${numbers.slice(5, 9)}`
+      } else if (numbers.length <= 10) {
+        return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`
+      } else {
+        return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`
+      }
+    }
+    // 기타 지역번호 (3자리)
+    else {
+      if (numbers.length <= 3) {
+        return numbers
+      } else if (numbers.length <= 6) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+      } else if (numbers.length <= 10) {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`
+      } else {
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
+      }
+    }
+  }
+
   const mockClasses = [
     { id: '', name: '전체' },
-    ...lectures.map(lecture => ({
+    ...(Array.isArray(lectures) ? lectures.map(lecture => ({
       id: lecture.id,
       name: lecture.name,
-      fee: lecture.fee || 0
-    }))
+      fee: Number(lecture.fee) || 0  // 문자열이든 숫자든 숫자로 변환
+    })) : [])
   ]
 
 
@@ -129,6 +190,27 @@ const StudentPage = () => {
     if (student) {
       setEditingStudent(student)
 
+      // 날짜를 YYYY-MM-DD 형식으로 변환하는 함수
+      const formatDateForInput = (dateValue) => {
+        if (!dateValue) return ''
+
+        // ISO 날짜 형식이면 파싱
+        if (dateValue.includes('T')) {
+          const date = new Date(dateValue)
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+
+        // 이미 YYYY-MM-DD 형식이면 그대로 반환
+        if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          return dateValue
+        }
+
+        return dateValue
+      }
+
       // 학생 데이터를 폼 데이터 구조에 맞게 변환
       const formattedData = {
         name: student.name || '',
@@ -140,13 +222,13 @@ const StudentPage = () => {
         attendanceNumber: student.attendanceNumber || '',
         email: student.email || '',
         class: student.class || '',
-        birthDate: student.birthDate || '',
+        birthDate: formatDateForInput(student.birthDate),
         address: student.address || '',
         notes: student.notes || '',
         // 수강료와 클래스 정보
         selectedClasses: student.selectedClasses || [],
         classFee: student.classFee || 0,
-        paymentDueDate: student.paymentDueDate || '',
+        paymentDueDate: formatDateForInput(student.paymentDueDate),
         sendPaymentNotification: student.sendPaymentNotification !== undefined ? student.sendPaymentNotification : true,
         profileImage: student.profileImage || null,
         capturedImage: student.capturedImage || null,
@@ -175,7 +257,12 @@ const StudentPage = () => {
   }
 
   const handleInputChange = (field) => (event) => {
-    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value
+    let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value
+
+    // 전화번호 필드 자동 포맷팅
+    if (field === 'phone' || field === 'parentPhone') {
+      value = formatPhoneNumber(value)
+    }
 
     setFormData(prev => {
       const newData = {
@@ -186,8 +273,14 @@ const StudentPage = () => {
       // 강의 선택 시 비용 자동 설정 (다중 선택)
       if (field === 'selectedClasses') {
         const selectedClassesInfo = value.map(classId => mockClasses.find(c => c.id === classId)).filter(Boolean)
-        const totalFee = selectedClassesInfo.reduce((sum, cls) => sum + (cls.fee || 0), 0)
+        const totalFee = selectedClassesInfo.reduce((sum, cls) => {
+          const fee = Number(cls.fee) || 0  // 문자열이든 숫자든 숫자로 변환
+          console.log('클래스:', cls.name, '비용:', fee)  // 디버그용 로그
+          return sum + fee
+        }, 0)
         const classNames = selectedClassesInfo.map(cls => cls.name).join(', ')
+
+        console.log('총 비용:', totalFee)  // 디버그용 로그
 
         newData.classFee = totalFee
         newData.class = classNames
@@ -280,15 +373,18 @@ const StudentPage = () => {
     try {
       if (editingStudent) {
         console.log('학생 수정:', formData)
-        updateStudent(editingStudent.id, formData)
+        await updateStudent(editingStudent.id, formData)
+        alert('학생 정보가 수정되었습니다.')
       } else {
         console.log('학생 추가:', formData)
-        addStudent(formData)
+        await addStudent(formData)
+        alert('학생이 추가되었습니다.')
       }
 
       handleCloseDialog()
     } catch (error) {
       console.error('학생 저장 실패:', error)
+      // 에러는 LMSContext에서 alert로 처리됨
     }
   }
 
@@ -296,17 +392,32 @@ const StudentPage = () => {
     if (window.confirm('정말 삭제하시겠습니까?')) {
       try {
         console.log('학생 삭제:', studentId)
-        deleteStudent(studentId)
+        await deleteStudent(studentId)
+        alert('학생이 삭제되었습니다.')
       } catch (error) {
         console.error('학생 삭제 실패:', error)
+        // 에러는 LMSContext에서 alert로 처리됨
       }
     }
   }
 
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    (selectedClass === '' || student.class === mockClasses.find(c => c.id === selectedClass)?.name)
-  )
+  // 안전한 필터링 (undefined 방지)
+  const filteredStudents = (students || []).filter(student => {
+    // 학생 데이터가 유효한지 확인
+    if (!student || !student.name) {
+      console.warn('⚠️ 잘못된 학생 데이터:', student);
+      return false;
+    }
+    
+    try {
+      const nameMatch = student.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const classMatch = selectedClass === '' || student.class === mockClasses.find(c => c.id === selectedClass)?.name;
+      return nameMatch && classMatch;
+    } catch (error) {
+      console.error('❌ 필터링 에러:', error, student);
+      return false;
+    }
+  })
 
   // DataGrid 컬럼 정의
   const columns = [
@@ -329,7 +440,7 @@ const StudentPage = () => {
               />
             ) : (
               <Avatar sx={{ width: 40, height: 40 }}>
-                {params.row.name.charAt(0)}
+                {params.row.name ? params.row.name.charAt(0) : '?'}
               </Avatar>
             )}
           </Box>
@@ -407,7 +518,7 @@ const StudentPage = () => {
       renderCell: (params) => {
         return (
           <Typography variant="body2" fontWeight="bold" color="primary" noWrap>
-            {params.value ? `${params.value.toLocaleString()}원` : '-'}
+            {params.value ? `${Math.round(params.value).toLocaleString()}원` : '-'}
           </Typography>
         )
       }
@@ -465,9 +576,24 @@ const StudentPage = () => {
       maxWidth: 150,
       resizable: true,
       renderCell: (params) => {
+        if (!params.value) return <Typography variant="body2" color="text.secondary" noWrap>-</Typography>
+
+        // ISO 날짜 형식이면 파싱
+        let day
+        if (params.value.includes('T')) {
+          // ISO 형식: 2025-01-29T15:00:00.000Z
+          const date = new Date(params.value)
+          day = date.getDate()
+        } else if (params.value.includes('-')) {
+          // YYYY-MM-DD 형식
+          day = params.value.split('-')[2]
+        } else {
+          day = params.value
+        }
+
         return (
           <Typography variant="body2" color="text.secondary" noWrap>
-            {params.value ? `매월 ${params.value.split('-')[2]}일` : '-'}
+            매월 {day}일
           </Typography>
         )
       }
@@ -504,6 +630,33 @@ const StudentPage = () => {
       }
     }
   ]
+
+  // 로딩 상태 표시
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" gutterBottom>데이터를 불러오는 중...</Typography>
+          <Typography variant="body2" color="text.secondary">잠시만 기다려주세요</Typography>
+        </Box>
+      </Box>
+    )
+  }
+
+  // 에러 상태 표시
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <Typography variant="h6" gutterBottom>데이터 로드 실패</Typography>
+          <Typography variant="body2">{error}</Typography>
+        </Alert>
+        <Button variant="contained" onClick={refreshData}>
+          다시 시도
+        </Button>
+      </Box>
+    )
+  }
 
   return (
     <Box>
@@ -775,7 +928,7 @@ const StudentPage = () => {
                         {mockClasses.filter(c => c.id !== '').map((cls) => (
                           <MenuItem key={cls.id} value={cls.id}>
                             <Checkbox checked={formData.selectedClasses.indexOf(cls.id) > -1} />
-                            {cls.name} - {cls.fee.toLocaleString()}원
+                            {cls.name} - {Math.round(cls.fee).toLocaleString()}원
                           </MenuItem>
                         ))}
                       </Select>
@@ -787,7 +940,7 @@ const StudentPage = () => {
                     <Grid item xs={12}>
                       <Alert severity="info">
                         선택된 강의: <strong>{formData.class}</strong><br/>
-                        총 월 수강료: <strong>{formData.classFee.toLocaleString()}원</strong>
+                        총 월 수강료: <strong>{Math.round(formData.classFee).toLocaleString()}원</strong>
                         {formData.selectedClasses.length > 1 && (
                           <>
                             <br/>
@@ -813,7 +966,7 @@ const StudentPage = () => {
                     <TextField
                       fullWidth
                       label="수강료"
-                      value={formData.classFee > 0 ? `${formData.classFee.toLocaleString()}원` : ''}
+                      value={formData.classFee > 0 ? `${Math.round(formData.classFee).toLocaleString()}원` : ''}
                       disabled
                       helperText="선택한 강의에 따라 자동 설정됩니다"
                     />

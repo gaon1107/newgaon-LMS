@@ -64,6 +64,9 @@ const Layout = ({ children }) => {
   // 기본 메뉴 (모든 사용자)
   const baseMenuItems = [
     { text: '대시보드', icon: <DashboardIcon />, path: '/dashboard' },
+    { text: '학생 관리', icon: <StudentsIcon />, path: '/students' },
+    { text: '강사 관리', icon: <TeachersIcon />, path: '/teachers' },
+    { text: '강의 관리', icon: <LecturesIcon />, path: '/lectures' },
     {
       text: '출결 관리',
       icon: <AttendanceIcon />,
@@ -82,9 +85,6 @@ const Layout = ({ children }) => {
         { text: '원생별 현황', icon: <StudentStudyIcon />, path: '/study/student' }
       ]
     },
-    { text: '학생 관리', icon: <StudentsIcon />, path: '/students' },
-    { text: '강사 관리', icon: <TeachersIcon />, path: '/teachers' },
-    { text: '강의 관리', icon: <LecturesIcon />, path: '/lectures' },
     { text: '메시지 관리', icon: <MessageIcon />, path: '/messages' },
     { text: '파일 관리', icon: <FileIcon />, path: '/files' },
     {

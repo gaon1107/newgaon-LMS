@@ -158,40 +158,31 @@ class LectureModel {
           ...basicData
         } = lectureData;
 
-        // 강의 기본 정보 삽입
+        // 강의 기본 정보 삽입 (실제 테이블 구조에 맞춤)
         const insertQuery = `
           INSERT INTO lectures (
-            name, subject, description, instructor_id, schedule,
-            start_date, end_date, fee, max_students, room,
-            status, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, name, instructor_id, teacher_name, subject, 
+            schedule, fee, capacity, description
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
+          basicData.id || `lecture_${Date.now()}`,
           basicData.name,
-          basicData.subject || null,
-          basicData.description || null,
           basicData.instructorId || null,
+          basicData.teacherName || null,
+          basicData.subject || null,
           basicData.schedule || null,
-          basicData.startDate || null,
-          basicData.endDate || null,
           basicData.fee || 0,
-          basicData.maxStudents || 0,
-          basicData.room || null,
-          basicData.status || 'active',
-          basicData.notes || null
+          basicData.capacity || basicData.maxStudents || 0,
+          basicData.description || null
         ];
 
         const [insertResult] = await conn.execute(insertQuery, insertParams);
-        const lectureId = insertResult.insertId;
+        const lectureId = basicData.id || insertResult.insertId;
 
-        // 강사-강의 연결 테이블 업데이트
-        if (basicData.instructorId) {
-          await conn.execute(
-            'INSERT INTO instructor_lectures (instructor_id, lecture_id) VALUES (?, ?)',
-            [basicData.instructorId, lectureId]
-          );
-        }
+        // 강사-강의 연결은 lectures 테이블의 instructor_id 컬럼에서 처리됨 (불필요)
+        // instructor_lectures 테이블 사용 안 함
 
         // 학생 연결
         if (enrolledStudents.length > 0) {
@@ -246,19 +237,11 @@ class LectureModel {
           ...basicData
         } = lectureData;
 
-        // 기존 강사 정보 조회
-        const [oldLecture] = await conn.execute(
-          'SELECT instructor_id FROM lectures WHERE id = ?',
-          [id]
-        );
-        const oldInstructorId = oldLecture[0]?.instructor_id;
-
-        // 강의 기본 정보 업데이트
+        // 강의 기본 정보 업데이트 (실제 테이블 구조에 맞춤)
         const updateQuery = `
           UPDATE lectures SET
             name = ?, subject = ?, description = ?, instructor_id = ?,
-            schedule = ?, start_date = ?, end_date = ?, fee = ?,
-            max_students = ?, room = ?, status = ?, notes = ?,
+            teacher_name = ?, schedule = ?, fee = ?, capacity = ?,
             updated_at = NOW()
           WHERE id = ? AND is_active = true
         `;
@@ -268,46 +251,17 @@ class LectureModel {
           basicData.subject || null,
           basicData.description || null,
           basicData.instructorId || null,
+          basicData.teacherName || basicData.instructor || null,
           basicData.schedule || null,
-          basicData.startDate || null,
-          basicData.endDate || null,
           basicData.fee || 0,
-          basicData.maxStudents || 0,
-          basicData.room || null,
-          basicData.status || 'active',
-          basicData.notes || null,
+          basicData.capacity || basicData.maxStudents || 0,
           id
         ];
 
         await conn.execute(updateQuery, updateParams);
 
-        // 기존 강사-강의 연결 정리
-        if (oldInstructorId) {
-          await conn.execute(
-            'UPDATE instructor_lectures SET is_active = false WHERE instructor_id = ? AND lecture_id = ?',
-            [oldInstructorId, id]
-          );
-        }
-
-        // 새 강사-강의 연결
-        if (basicData.instructorId) {
-          const [existing] = await conn.execute(
-            'SELECT id FROM instructor_lectures WHERE instructor_id = ? AND lecture_id = ?',
-            [basicData.instructorId, id]
-          );
-
-          if (existing.length > 0) {
-            await conn.execute(
-              'UPDATE instructor_lectures SET is_active = true WHERE instructor_id = ? AND lecture_id = ?',
-              [basicData.instructorId, id]
-            );
-          } else {
-            await conn.execute(
-              'INSERT INTO instructor_lectures (instructor_id, lecture_id) VALUES (?, ?)',
-              [basicData.instructorId, id]
-            );
-          }
-        }
+        // 강사-강의 연결은 lectures 테이블의 instructor_id 컬럼에서 처리됨 (불필요)
+        // instructor_lectures 테이블 사용 안 함
 
         // 기존 학생 연결 비활성화
         const [oldStudents] = await conn.execute(
@@ -385,30 +339,31 @@ class LectureModel {
   }
 
   // 강의 삭제 (소프트 삭제)
+  // 강의 삭제 (완전 삭제)
   static async deleteLecture(id) {
     try {
       await transaction(async (conn) => {
-        // 등록된 학생들 조회
+        // 등록된 학생들 조회 (수강료 재계산용)
         const [students] = await conn.execute(
-          'SELECT student_id FROM student_lectures WHERE lecture_id = ? AND is_active = true',
+          'SELECT student_id FROM student_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 강의를 비활성화
+        // 학생-강의 연결 완전 삭제
         await conn.execute(
-          'UPDATE lectures SET is_active = false WHERE id = ?',
+          'DELETE FROM student_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 학생-강의 연결 비활성화
+        // 강사-강의 연결 완전 삭제
         await conn.execute(
-          'UPDATE student_lectures SET is_active = false WHERE lecture_id = ?',
+          'DELETE FROM instructor_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 강사-강의 연결 비활성화
+        // 강의 완전 삭제
         await conn.execute(
-          'UPDATE instructor_lectures SET is_active = false WHERE lecture_id = ?',
+          'DELETE FROM lectures WHERE id = ?',
           [id]
         );
 

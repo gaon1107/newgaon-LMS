@@ -2,11 +2,17 @@ const { query, transaction } = require('../config/database');
 
 class StudentModel {
   // 학생 목록 조회 (페이지네이션, 검색 포함)
-  static async getStudents({ page = 1, limit = 20, search = '', classId = '' }) {
+  static async getStudents({ page = 1, limit = 20, search = '', classId = '', tenantId = '' }) {
     try {
       const offset = (page - 1) * limit;
       let whereClauses = ['s.is_active = true'];
       let queryParams = [];
+
+      // ✅ tenant_id 필터 추가!
+      if (tenantId) {
+        whereClauses.push('s.tenant_id = ?');
+        queryParams.push(tenantId);
+      }
 
       // 검색 조건
       if (search) {
@@ -68,8 +74,33 @@ class StudentModel {
         // 강의별 수강료 조회 (별도 쿼리 필요 시)
         totalFee = student.class_fee || 0;
 
+        // 날짜를 YYYY-MM-DD 형식으로 변환하는 함수
+        const formatDate = (date) => {
+          if (!date) return null
+          const d = new Date(date)
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        }
+
+        // snake_case를 camelCase로 변환
         return {
-          ...student,
+          id: student.id,
+          name: student.name,
+          school: student.school,
+          grade: student.grade,
+          department: student.department,
+          phone: student.phone,
+          parentPhone: student.parent_phone,
+          attendanceNumber: student.attendance_number,
+          email: student.email,
+          birthDate: formatDate(student.birth_date),
+          address: student.address,
+          notes: student.notes,
+          paymentDueDate: formatDate(student.payment_due_date),
+          sendPaymentNotification: student.send_payment_notification,
+          profileImage: student.profile_image_url || null,
           selectedClasses: lectures.map(l => l.id),
           class: lectures.map(l => l.name).join(', ') || '미등록',
           classFee: totalFee,
@@ -78,8 +109,7 @@ class StudentModel {
             outing: !!student.auto_outing_msg,
             imagePost: !!student.auto_image_msg,
             studyMonitoring: !!student.auto_study_monitoring
-          },
-          lecture_info: undefined // 임시 필드 제거
+          }
         };
       });
 
@@ -134,8 +164,23 @@ class StudentModel {
         });
       }
 
+      // snake_case를 camelCase로 변환
       return {
-        ...student,
+        id: student.id,
+        name: student.name,
+        school: student.school,
+        grade: student.grade,
+        department: student.department,
+        phone: student.phone,
+        parentPhone: student.parent_phone,
+        attendanceNumber: student.attendance_number,
+        email: student.email,
+        birthDate: student.birth_date,
+        address: student.address,
+        notes: student.notes,
+        paymentDueDate: student.payment_due_date,
+        sendPaymentNotification: student.send_payment_notification,
+        profileImage: student.profile_image_url || null,
         selectedClasses: lectures.map(l => l.id),
         class: lectures.map(l => l.name).join(', ') || '미등록',
         classFee: totalFee,
@@ -144,8 +189,7 @@ class StudentModel {
           outing: !!student.auto_outing_msg,
           imagePost: !!student.auto_image_msg,
           studyMonitoring: !!student.auto_study_monitoring
-        },
-        lecture_info: undefined // 임시 필드 제거
+        }
       };
     } catch (error) {
       console.error('StudentModel.getStudentById error:', error);
@@ -154,7 +198,7 @@ class StudentModel {
   }
 
   // 학생 추가
-  static async createStudent(studentData) {
+  static async createStudent(studentData, tenantId) {
     try {
       const result = await transaction(async (conn) => {
         const {
@@ -173,7 +217,7 @@ class StudentModel {
             attendanceNumber = Math.floor(1000 + Math.random() * 9000).toString();
 
             const [existing] = await conn.execute(
-              'SELECT id FROM students WHERE attendance_number = ?',
+              'SELECT id FROM students WHERE attendance_number = ? AND is_active = true',
               [attendanceNumber]
             );
 
@@ -187,9 +231,9 @@ class StudentModel {
             throw new Error('고유한 출결번호 생성에 실패했습니다.');
           }
         } else {
-          // 사용자가 제공한 출결번호 중복 확인
+          // 사용자가 제공한 출결번호 중복 확인 (활성 학생만)
           const [existing] = await conn.execute(
-            'SELECT id FROM students WHERE attendance_number = ?',
+            'SELECT id FROM students WHERE attendance_number = ? AND is_active = true',
             [attendanceNumber]
           );
 
@@ -201,14 +245,15 @@ class StudentModel {
         // 학생 기본 정보 삽입
         const insertQuery = `
           INSERT INTO students (
-            name, school, grade, department, phone, parent_phone, attendance_number, email,
+            tenant_id, name, school, grade, department, phone, parent_phone, attendance_number, email,
             birth_date, address, notes, payment_due_date, send_payment_notification,
             profile_image_url, auto_attendance_msg, auto_outing_msg,
-            auto_image_msg, auto_study_monitoring
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            auto_image_msg, auto_study_monitoring, is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true)
         `;
 
         const insertParams = [
+          tenantId,
           basicData.name,
           basicData.school || null,
           basicData.grade || null,
@@ -222,7 +267,7 @@ class StudentModel {
           basicData.notes || null,
           basicData.paymentDueDate || null,
           basicData.sendPaymentNotification !== false,
-          basicData.profileImage || null,
+          basicData.profileImage || basicData.profile_image_url || null,
           autoMessages.attendance !== false,
           autoMessages.outing === true,
           autoMessages.imagePost === true,
@@ -289,10 +334,10 @@ class StudentModel {
           ...basicData
         } = studentData;
 
-        // 출결번호 중복 확인 (수정 시)
+        // 출결번호 중복 확인 (수정 시, 활성 학생만)
         if (basicData.attendanceNumber) {
           const [existing] = await conn.execute(
-            'SELECT id FROM students WHERE attendance_number = ? AND id != ?',
+            'SELECT id FROM students WHERE attendance_number = ? AND id != ? AND is_active = true',
             [basicData.attendanceNumber, id]
           );
 
@@ -326,7 +371,7 @@ class StudentModel {
           basicData.notes || null,
           basicData.paymentDueDate || null,
           basicData.sendPaymentNotification !== false,
-          basicData.profileImage || null,
+          basicData.profileImage || basicData.profile_image_url || null,
           autoMessages.attendance !== false,
           autoMessages.outing === true,
           autoMessages.imagePost === true,
@@ -406,33 +451,42 @@ class StudentModel {
     }
   }
 
-  // 학생 삭제 (소프트 삭제)
+  // 학생 삭제 (완전 삭제)
   static async deleteStudent(id) {
     try {
       await transaction(async (conn) => {
-        // 학생을 비활성화
-        await conn.execute(
-          'UPDATE students SET is_active = false WHERE id = ?',
-          [id]
-        );
-
-        // 강의 연결 비활성화
-        await conn.execute(
-          'UPDATE student_lectures SET is_active = false WHERE student_id = ?',
-          [id]
-        );
-
-        // 관련 강의들의 현재 학생 수 업데이트
+        // 관련 강의들의 ID를 먼저 가져오기 (학생 수 업데이트용)
         const [relatedLectures] = await conn.execute(`
           SELECT DISTINCT lecture_id FROM student_lectures WHERE student_id = ?
         `, [id]);
 
+        // 학생-강의 연결 완전 삭제
+        await conn.execute(
+          'DELETE FROM student_lectures WHERE student_id = ?',
+          [id]
+        );
+
+        // 출석 기록 완전 삭제 (선택사항 - 출석 기록을 보존하려면 주석 처리)
+        await conn.execute(
+          'DELETE FROM attendance WHERE student_id = ?',
+          [id]
+        );
+
+        // 학생 완전 삭제
+        await conn.execute(
+          'DELETE FROM students WHERE id = ?',
+          [id]
+        );
+
+        // 관련 강의들의 현재 학생 수 업데이트
         for (const lecture of relatedLectures) {
           await conn.execute(`
             UPDATE lectures
             SET current_students = (
-              SELECT COUNT(*) FROM student_lectures
-              WHERE lecture_id = ? AND is_active = true
+              SELECT COUNT(DISTINCT sl.student_id)
+              FROM student_lectures sl
+              JOIN students s ON sl.student_id = s.id
+              WHERE sl.lecture_id = ? AND sl.is_active = true AND s.is_active = true
             )
             WHERE id = ?
           `, [lecture.lecture_id, lecture.lecture_id]);
@@ -496,8 +550,33 @@ class StudentModel {
         });
       }
 
+      // 날짜를 YYYY-MM-DD 형식으로 변환하는 함수
+      const formatDate = (date) => {
+        if (!date) return null
+        const d = new Date(date)
+        const year = d.getFullYear()
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+
+      // snake_case를 camelCase로 변환
       return {
-        ...student,
+        id: student.id,
+        name: student.name,
+        school: student.school,
+        grade: student.grade,
+        department: student.department,
+        phone: student.phone,
+        parentPhone: student.parent_phone,
+        attendanceNumber: student.attendance_number,
+        email: student.email,
+        birthDate: formatDate(student.birth_date),
+        address: student.address,
+        notes: student.notes,
+        paymentDueDate: formatDate(student.payment_due_date),
+        sendPaymentNotification: student.send_payment_notification,
+        profileImage: student.profile_image_url || null,
         selectedClasses: lectures.map(l => l.id),
         class: lectures.map(l => l.name).join(', ') || '미등록',
         classFee: totalFee,
@@ -506,8 +585,7 @@ class StudentModel {
           outing: !!student.auto_outing_msg,
           imagePost: !!student.auto_image_msg,
           studyMonitoring: !!student.auto_study_monitoring
-        },
-        lecture_info: undefined
+        }
       };
     } catch (error) {
       console.error('StudentModel.getStudentByAttendanceNumber error:', error);

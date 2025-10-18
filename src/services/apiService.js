@@ -59,8 +59,8 @@ apiClient.interceptors.response.use(
 // 출결 관리 API
 export const attendanceService = {
   // 출결 데이터 조회
-  getAttendance: async (date, classId = null) => {
-    const params = { date }
+  getAttendance: async (date, classId = null, page = 1, limit = 100) => {
+    const params = { date, page, limit }
     if (classId) params.classId = classId
     
     const response = await apiClient.get('/attendance', { params })
@@ -68,11 +68,35 @@ export const attendanceService = {
   },
 
   // 출결 상태 업데이트
-  updateAttendanceStatus: async (studentId, date, status) => {
-    const response = await apiClient.put(`/attendance/${studentId}`, {
+  updateAttendanceStatus: async (studentId, date, attendanceData) => {
+    console.log('========== 학원 출석 상태 업데이트 =========');
+    console.log('🔍 [apiService] studentId:', studentId);
+    console.log('🔍 [apiService] date:', date);
+    console.log('🔍 [apiService] attendanceData:', attendanceData);
+    console.log('========================================\n');
+
+    // ✅ null이 아닌 값만 포함하는 객체 생성 (lectureId 제거)
+    const payload = {
       date,
-      status
-    })
+      // lectureId 제거 - 학원 출석이므로 불필요
+      status: attendanceData.status,
+      notes: attendanceData.notes || ''
+    }
+
+    // checkInTime이 있으면 추가
+    if (attendanceData.checkInTime) {
+      payload.checkInTime = attendanceData.checkInTime
+    }
+
+    // checkOutTime이 있으면 추가
+    if (attendanceData.checkOutTime) {
+      payload.checkOutTime = attendanceData.checkOutTime
+    }
+
+    console.log('✅ [apiService] 최종 전송 데이터 (lectureId 없음):', payload)
+    console.log('✅ [apiService] 요청 URL:', `/attendance/${studentId}`)
+
+    const response = await apiClient.put(`/attendance/${studentId}`, payload)
     return response.data
   },
 
@@ -82,6 +106,24 @@ export const attendanceService = {
     if (classId) params.classId = classId
     
     const response = await apiClient.get('/attendance/stats', { params })
+    return response.data
+  },
+
+  // 학생별 출결 현황 조회
+  getStudentAttendance: async (studentId, startDate = null, endDate = null) => {
+    const params = {}
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
+
+    const response = await apiClient.get(`/attendance/student/${studentId}`, { params })
+    return response.data
+  },
+
+  // 월별 출석 현황 조회
+  getMonthlyAttendance: async (yearMonth) => {
+    const response = await apiClient.get('/attendance/monthly', {
+      params: { yearMonth }
+    })
     return response.data
   }
 }
@@ -132,34 +174,64 @@ export const studentService = {
   }
 }
 
-// 강사 관리 API
-export const teacherService = {
+// 강사 관리 API (Instructors)
+export const instructorService = {
   // 강사 목록 조회
-  getTeachers: async (page = 1, limit = 20, search = '') => {
-    const response = await apiClient.get('/teachers', {
-      params: { page, limit, search }
+  getInstructors: async (page = 1, limit = 20, search = '', departmentId = '') => {
+    const response = await apiClient.get('/instructors', {
+      params: { page, limit, search, departmentId }
     })
     return response.data
   },
 
+  // 강사 상세 조회
+  getInstructor: async (instructorId) => {
+    const response = await apiClient.get(`/instructors/${instructorId}`)
+    return response.data
+  },
+
   // 강사 추가
-  createTeacher: async (teacherData) => {
-    const response = await apiClient.post('/teachers', teacherData)
+  createInstructor: async (instructorData) => {
+    const response = await apiClient.post('/instructors', instructorData)
     return response.data
   },
 
   // 강사 정보 수정
-  updateTeacher: async (teacherId, teacherData) => {
-    const response = await apiClient.put(`/teachers/${teacherId}`, teacherData)
+  updateInstructor: async (instructorId, instructorData) => {
+    const response = await apiClient.put(`/instructors/${instructorId}`, instructorData)
     return response.data
   },
 
   // 강사 삭제
-  deleteTeacher: async (teacherId) => {
-    const response = await apiClient.delete(`/teachers/${teacherId}`)
+  deleteInstructor: async (instructorId) => {
+    const response = await apiClient.delete(`/instructors/${instructorId}`)
+    return response.data
+  },
+
+  // 담당 강의 없는 강사 목록 조회
+  getAvailableInstructors: async () => {
+    const response = await apiClient.get('/instructors/available')
+    return response.data
+  },
+
+  // 강의별 강사 조회
+  getInstructorByLecture: async (lectureId) => {
+    const response = await apiClient.get(`/instructors/lecture/${lectureId}`)
+    return response.data
+  },
+
+  // 강사를 강의에 배정
+  assignToLecture: async (instructorId, lectureId) => {
+    const response = await apiClient.post('/instructors/assign', {
+      instructorId,
+      lectureId
+    })
     return response.data
   }
 }
+
+// 하위 호환성을 위한 별칭 (teacherService -> instructorService)
+export const teacherService = instructorService
 
 // 강의 관리 API
 export const lectureService = {

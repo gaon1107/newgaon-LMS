@@ -8,6 +8,7 @@ const path = require('path');
 require('dotenv').config();
 
 const { testConnection } = require('./config/database');
+const { startAttendanceScheduler } = require('./schedulers/attendanceScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -89,7 +90,9 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/mobile/attendance', require('./routes/mobile_attendance'));
 
 // 기존 GFKids 앱 호환용 레거시 API 라우터 연결
-app.use('/api/d/1.0', require('./routes/legacy_api'));
+const legacyApiRouter = require('./routes/legacy_api');
+app.use('/api/d/1.0', legacyApiRouter);
+console.log('📡 Legacy API 라우터 등록됨: /api/d/1.0');
 
 // 404 핸들러
 app.use('*', (req, res) => {
@@ -135,6 +138,9 @@ const startServer = async () => {
       console.log(`🚀 URL: http://localhost:${PORT}`);
       console.log(`🚀 에뮬레이터 URL: http://10.0.2.2:${PORT}`);
       console.log('🚀 ================================');
+
+      // 출석 자동 초기화 스케줄러 시작
+      startAttendanceScheduler();
     });
 
   } catch (error) {

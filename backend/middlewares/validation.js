@@ -56,6 +56,14 @@ const studentSchema = Joi.object({
       'any.required': '학부모 연락처는 필수 입력 항목입니다.'
     }),
 
+  attendanceNumber: Joi.string()
+    .pattern(/^[0-9]{4}$/)
+    .allow('', null)
+    .messages({
+      'string.pattern.base': '출결번호는 4자리 숫자여야 합니다.',
+      'string.base': '출결번호는 문자열이어야 합니다.'
+    }),
+
   email: Joi.string()
     .email()
     .max(255)
@@ -139,13 +147,13 @@ const paginationSchema = Joi.object({
   limit: Joi.number()
     .integer()
     .min(1)
-    .max(100)
+    .max(10000)
     .default(20)
     .messages({
       'number.base': '페이지당 항목 수는 숫자여야 합니다.',
       'number.integer': '페이지당 항목 수는 정수여야 합니다.',
       'number.min': '페이지당 항목 수는 1 이상이어야 합니다.',
-      'number.max': '페이지당 항목 수는 100 이하여야 합니다.'
+      'number.max': '페이지당 항목 수는 10000 이하여야 합니다.'
     }),
 
   search: Joi.string()
@@ -165,6 +173,10 @@ const paginationSchema = Joi.object({
 
 // 유효성 검증 미들웨어
 const validateStudent = (req, res, next) => {
+  // 🔍 받은 데이터 로그 추가
+  console.log('🔍 학생 데이터 검증 시작:');
+  console.log('받은 데이터:', JSON.stringify(req.body, null, 2));
+
   const { error, value } = studentSchema.validate(req.body, {
     abortEarly: false,
     stripUnknown: true
@@ -180,6 +192,10 @@ const validateStudent = (req, res, next) => {
       fields[field].push(detail.message);
     });
 
+    // 🔴 에러 상세 로그 추가
+    console.error('❌ 학생 데이터 검증 실패:');
+    console.error('에러 필드:', JSON.stringify(fields, null, 2));
+
     return res.status(400).json({
       success: false,
       error: {
@@ -189,6 +205,9 @@ const validateStudent = (req, res, next) => {
       }
     });
   }
+
+  // ✅ 성공 로그 추가
+  console.log('✅ 학생 데이터 검증 성공');
 
   // 유효성 검증을 통과한 데이터로 교체
   req.body = value;

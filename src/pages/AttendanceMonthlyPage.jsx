@@ -32,79 +32,13 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { ko } from 'date-fns/locale'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDate } from 'date-fns'
+import { attendanceService } from '../services/apiService'
 
 const AttendanceMonthlyPage = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [attendanceData, setAttendanceData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [monthlyData, setMonthlyData] = useState({})
-
-  // 임시 데이터 - 센차 버전의 피벗 테이블 구조를 시뮬레이션
-  const mockMonthlyData = [
-    {
-      studentId: 1,
-      studentName: '김철수',
-      className: '수학 A반',
-      daily: {
-        1: { in: '08:45', out: '17:30' },
-        2: { in: '08:50', out: '17:25' },
-        3: { in: '09:00', out: '17:35' },
-        5: { in: '08:40', out: '17:20' },
-        8: { in: '08:55', out: '17:40' },
-        9: { in: '08:45', out: '17:30' },
-        10: { in: '08:50', out: '17:25' },
-        12: { in: '09:05', out: '17:35' },
-        15: { in: '08:35', out: '17:15' },
-        16: { in: '08:45', out: '17:30' },
-        17: { in: '08:50', out: '17:25' },
-        19: { in: '08:55', out: '17:35' },
-        22: { in: '09:00', out: '17:40' },
-        23: { in: '08:40', out: '17:20' },
-        24: { in: '08:45', out: '17:30' }
-      },
-      totalDays: 15
-    },
-    {
-      studentId: 2,
-      studentName: '이영희',
-      className: '수학 A반',
-      daily: {
-        1: { in: '08:30', out: '17:35' },
-        2: { in: '08:45', out: '17:30' },
-        3: { in: '08:40', out: '17:25' },
-        5: { in: '08:35', out: '17:40' },
-        8: { in: '08:50', out: '17:30' },
-        9: { in: '08:45', out: '17:35' },
-        10: { in: '08:40', out: '17:25' },
-        15: { in: '08:30', out: '17:20' },
-        16: { in: '08:45', out: '17:30' },
-        17: { in: '08:50', out: '17:35' },
-        19: { in: '08:35', out: '17:25' },
-        22: { in: '08:40', out: '17:40' },
-        23: { in: '08:45', out: '17:30' }
-      },
-      totalDays: 13
-    },
-    {
-      studentId: 3,
-      studentName: '박민수',
-      className: '영어 B반',
-      daily: {
-        1: { in: '09:00', out: '17:30' },
-        2: { in: '08:55', out: '17:25' },
-        5: { in: '09:10', out: '17:35' },
-        8: { in: '08:45', out: '17:40' },
-        9: { in: '09:00', out: '17:30' },
-        12: { in: '08:50', out: '17:25' },
-        15: { in: '09:05', out: '17:35' },
-        16: { in: '08:55', out: '17:20' },
-        19: { in: '09:00', out: '17:30' },
-        22: { in: '08:45', out: '17:35' },
-        23: { in: '09:10', out: '17:25' }
-      },
-      totalDays: 11
-    }
-  ]
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     loadMonthlyData()
@@ -112,17 +46,24 @@ const AttendanceMonthlyPage = () => {
 
   const loadMonthlyData = async () => {
     setLoading(true)
+    setError(null)
     try {
-      // 실제 API 호출 시:
-      // const response = await attendanceService.getMonthlyAttendance(format(selectedMonth, 'yyyy-MM'))
-      
-      // 임시 데이터 사용
-      setTimeout(() => {
-        setAttendanceData(mockMonthlyData)
-        setLoading(false)
-      }, 500)
+      console.log('📅 월별 출석 데이터 로딩 중...', format(selectedMonth, 'yyyy-MM'))
+
+      // ✅ 실제 API 호출
+      const response = await attendanceService.getMonthlyAttendance(format(selectedMonth, 'yyyy-MM'))
+
+      if (response.success) {
+        console.log('✅ 월별 출석 데이터 로딩 성공:', response.data)
+        setAttendanceData(response.data.students || [])
+      } else {
+        throw new Error(response.error?.message || '데이터 로딩 실패')
+      }
     } catch (error) {
-      console.error('월별 출결 데이터 로딩 실패:', error)
+      console.error('❌ 월별 출결 데이터 로딩 실패:', error)
+      setError(error.message || '월별 출석 데이터를 불러오는데 실패했습니다')
+      setAttendanceData([])
+    } finally {
       setLoading(false)
     }
   }
@@ -142,30 +83,42 @@ const AttendanceMonthlyPage = () => {
   const renderDailyCell = (studentData, day) => {
     const dayNum = getDate(day)
     const dayData = studentData.daily[dayNum]
-    
+
     if (!dayData) {
-      return <TableCell key={dayNum} align="center" sx={{ minWidth: 80 }}>-</TableCell>
+      return <TableCell key={dayNum} align="center" sx={{ minWidth: 100 }}>-</TableCell>
     }
 
+    // ✅ 월별출석: 첫 등원 시간과 마지막 하원 시간만 표시
+    // 외출/복귀는 표시하지 않음
+    const hasCheckIn = dayData.in && dayData.in !== 'null'
+    const hasCheckOut = dayData.out && dayData.out !== 'null'
+
     return (
-      <TableCell key={dayNum} align="center" sx={{ minWidth: 80 }}>
-        <Box sx={{ 
-          fontSize: '0.75rem', 
-          lineHeight: 1.2,
+      <TableCell key={dayNum} align="center" sx={{ minWidth: 100 }}>
+        <Box sx={{
+          fontSize: '0.7rem',
+          lineHeight: 1.3,
           color: 'text.primary'
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.5 }}>
-            <LoginIcon sx={{ fontSize: 12, mr: 0.5, color: 'success.main' }} />
-            <Tooltip title={`등원: ${dayData.in}`}>
-              <span>{dayData.in}</span>
-            </Tooltip>
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <LogoutIcon sx={{ fontSize: 12, mr: 0.5, color: 'info.main' }} />
-            <Tooltip title={`하원: ${dayData.out}`}>
-              <span>{dayData.out}</span>
-            </Tooltip>
-          </Box>
+          {hasCheckIn && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.3 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'success.main', fontWeight: 'medium' }}>
+                등원: {dayData.in}
+              </Typography>
+            </Box>
+          )}
+          {hasCheckOut && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'info.main', fontWeight: 'medium' }}>
+                하원: {dayData.out}
+              </Typography>
+            </Box>
+          )}
+          {!hasCheckIn && !hasCheckOut && (
+            <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'text.secondary' }}>
+              -
+            </Typography>
+          )}
         </Box>
       </TableCell>
     )
@@ -185,7 +138,7 @@ const AttendanceMonthlyPage = () => {
     const workbookData = []
     
     // 헤더 행 만들기
-    const headerRow = ['학생명', '반']
+    const headerRow = ['학생명', '학번']
     daysInMonth.forEach(day => {
       headerRow.push(`${getDate(day)}일`)
     })
@@ -194,7 +147,7 @@ const AttendanceMonthlyPage = () => {
     
     // 학생별 데이터 행 만들기
     attendanceData.forEach(student => {
-      const row = [student.studentName, student.className]
+      const row = [student.studentName, student.studentNumber || '']
       daysInMonth.forEach(day => {
         const dayNum = getDate(day)
         const dayData = student.daily[dayNum]
@@ -331,6 +284,10 @@ const AttendanceMonthlyPage = () => {
               <Box display="flex" justifyContent="center" p={4}>
                 <CircularProgress />
               </Box>
+            ) : error ? (
+              <Alert severity="error">
+                {error}
+              </Alert>
             ) : attendanceData.length === 0 ? (
               <Alert severity="info">
                 해당 월에 출석 데이터가 없습니다.
@@ -353,11 +310,11 @@ const AttendanceMonthlyPage = () => {
                         학생이름
                       </TableCell>
                       {daysInMonth.map((day) => (
-                        <TableCell 
-                          key={getDate(day)} 
-                          align="center" 
-                          sx={{ 
-                            minWidth: 80,
+                        <TableCell
+                          key={getDate(day)}
+                          align="center"
+                          sx={{
+                            minWidth: 100,
                             fontWeight: 'bold',
                             backgroundColor: getDate(day) % 7 === 0 || getDate(day) % 7 === 6 ? 'grey.50' : 'inherit'
                           }}
@@ -399,7 +356,7 @@ const AttendanceMonthlyPage = () => {
                               {student.studentName}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {student.className}
+                              {student.studentNumber || ''}
                             </Typography>
                           </Box>
                         </TableCell>
@@ -480,28 +437,6 @@ const AttendanceMonthlyPage = () => {
           </CardContent>
         </Card>
 
-        {/* 범례 */}
-        <Card sx={{ mt: 2 }}>
-          <CardContent>
-            <Typography variant="subtitle2" gutterBottom>
-              범례
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <LoginIcon sx={{ fontSize: 16, color: 'success.main' }} />
-                <Typography variant="body2">등원 시간</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <LogoutIcon sx={{ fontSize: 16, color: 'info.main' }} />
-                <Typography variant="body2">하원 시간</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body2">-</Typography>
-                <Typography variant="body2">미출석</Typography>
-              </Box>
-            </Box>
-          </CardContent>
-        </Card>
       </Box>
     </LocalizationProvider>
   )

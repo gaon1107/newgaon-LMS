@@ -1,5 +1,36 @@
 const { query, transaction } = require('../config/database');
 
+/**
+ * 날짜를 MySQL DATE 형식(yyyy-MM-dd)으로 변환
+ * @param {string} dateString - ISO 8601 형식 또는 yyyy-MM-dd 형식의 날짜 문자열
+ * @returns {string|null} MySQL DATE 형식(yyyy-MM-dd) 또는 null
+ */
+function formatDateForMySQL(dateString) {
+  if (!dateString) return null;
+  
+  // 이미 yyyy-MM-dd 형식이면 그대로 반환
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  // ISO 8601 형식 변환
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    console.error('날짜 변환 오류:', error);
+    return null;
+  }
+}
+
 class InstructorModel {
   // 강사 목록 조회 (페이지네이션, 검색 포함)
   static async getInstructors({ page = 1, limit = 20, search = '', departmentId = '' }) {
@@ -157,7 +188,7 @@ class InstructorModel {
           basicData.subject || null,
           basicData.phone || null,
           basicData.email || null,
-          basicData.hireDate || null,
+          formatDateForMySQL(basicData.hireDate), // 날짜 형식 변환
           basicData.address || null,
           basicData.notes || null,
           basicData.salary || 0,
@@ -224,7 +255,7 @@ class InstructorModel {
           basicData.subject || null,
           basicData.phone || null,
           basicData.email || null,
-          basicData.hireDate || null,
+          formatDateForMySQL(basicData.hireDate), // 날짜 형식 변환
           basicData.address || null,
           basicData.notes || null,
           basicData.salary || 0,
@@ -288,24 +319,25 @@ class InstructorModel {
   }
 
   // 강사 삭제 (소프트 삭제)
+  // 강사 삭제 (완전 삭제)
   static async deleteInstructor(id) {
     try {
       await transaction(async (conn) => {
-        // 강사를 비활성화
-        await conn.execute(
-          'UPDATE instructors SET is_active = false WHERE id = ?',
-          [id]
-        );
-
-        // 강의 연결 비활성화
-        await conn.execute(
-          'UPDATE instructor_lectures SET is_active = false WHERE instructor_id = ?',
-          [id]
-        );
-
         // 관련 강의들의 강사 정보 초기화
         await conn.execute(
           'UPDATE lectures SET instructor_id = NULL WHERE instructor_id = ?',
+          [id]
+        );
+
+        // 강의 연결 완전 삭제
+        await conn.execute(
+          'DELETE FROM instructor_lectures WHERE instructor_id = ?',
+          [id]
+        );
+
+        // 강사 완전 삭제
+        await conn.execute(
+          'DELETE FROM instructors WHERE id = ?',
           [id]
         );
       });

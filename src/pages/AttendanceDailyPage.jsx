@@ -216,11 +216,22 @@ const AttendanceDailyPage = () => {
       maxWidth: 180,
       resizable: true,
       renderCell: (params) => {
-        return (
-          <Typography variant="body2" noWrap>
-            {format(new Date(params.value), 'MM/dd HH:mm:ss')}
-          </Typography>
-        )
+        if (!params.value) {
+          return <Typography variant="body2" noWrap>-</Typography>
+        }
+        try {
+          const date = new Date(params.value)
+          if (isNaN(date.getTime())) {
+            return <Typography variant="body2" noWrap>-</Typography>
+          }
+          return (
+            <Typography variant="body2" noWrap>
+              {format(date, 'MM/dd HH:mm:ss')}
+            </Typography>
+          )
+        } catch (error) {
+          return <Typography variant="body2" noWrap>-</Typography>
+        }
       }
     },
     {
@@ -462,7 +473,16 @@ const AttendanceDailyPage = () => {
                               color={getStatusColor(history.type)}
                             />
                             <Typography variant="body1" fontWeight="medium">
-                              {format(new Date(history.time), 'HH:mm:ss')}
+                              {(() => {
+                                if (!history.time) return '-'
+                                try {
+                                  const date = new Date(history.time)
+                                  if (isNaN(date.getTime())) return '-'
+                                  return format(date, 'HH:mm:ss')
+                                } catch (error) {
+                                  return '-'
+                                }
+                              })()}
                             </Typography>
                           </Box>
                         }

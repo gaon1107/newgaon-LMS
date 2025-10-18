@@ -70,8 +70,16 @@ const transaction = async (callback) => {
   }
 };
 
+// db 객체 생성 (attendance.js와 다른 파일에서 사용)
+const db = {
+  execute: async (sql, params = []) => {
+    return await pool.execute(sql, params);
+  }
+};
+
 module.exports = {
   pool,
+  db,           // ✅ db 객체 추가 (attendance.js에서 사용) - async/await 적용
   query,
   transaction,
   testConnection

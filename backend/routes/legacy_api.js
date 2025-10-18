@@ -219,6 +219,22 @@ router.post('/user', authenticateToken, async (req, res) => {
 
     const userData = users[0];
 
+    // 라이선스 정보 조회 (데이터베이스에서)
+    const licenses = await query(
+      `SELECT 
+        license_type,
+        license_key,
+        end_date,
+        DATEDIFF(end_date, CURDATE()) as remaining_days,
+        is_active
+      FROM licenses 
+      WHERE user_id = ? AND is_active = TRUE`,
+      [user.id]
+    );
+
+    // 출석 라이선스 찾기
+    const attendLicense = licenses.find(l => l.license_type === 'attend');
+
     // 기존 앱 호환 응답 형식 (라이선스 정보 포함)
     const responseData = {
       userInfo: {
@@ -236,14 +252,25 @@ router.post('/user', authenticateToken, async (req, res) => {
     const responseWithHeader = formatLegacyResponse(true, responseData);
 
     // 안드로이드 앱이 기대하는 헤더 정보 추가
-    responseWithHeader.header.appVersion = "1.15.1";
+    responseWithHeader.header.appVersion = "1.0.0";
     responseWithHeader.header.licenses = {
-      attend: {
-        license: "VALID_LICENSE_KEY",
-        licenseTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1년 후
-        remainingDays: 365
+      attend: attendLicense ? {
+        license: attendLicense.license_key,
+        licenseTo: attendLicense.end_date,  // Date 객체로 전달 (Gson이 자동 변환)
+        remainingDays: attendLicense.remaining_days
+      } : {
+        license: null,
+        licenseTo: null,
+        remainingDays: 0
       }
     };
+
+    console.log(`✅ 레거시 사용자 정보 조회: ${userData.username}, 라이선스 잔여일: ${attendLicense ? attendLicense.remaining_days : 0}일`);
+
+    // 디버깅: 실제 응답 구조 로깅
+    console.log('=== 앱으로 전송되는 응답 ===');
+    console.log('header.licenses.attend:', JSON.stringify(responseWithHeader.header.licenses.attend, null, 2));
+    console.log('========================');
 
     res.json(responseWithHeader);
 
@@ -263,6 +290,24 @@ router.post('/user', authenticateToken, async (req, res) => {
  */
 router.post('/version', authenticateToken, async (req, res) => {
   try {
+    const user = req.user;
+
+    // 라이선스 정보 조회 (user API와 동일하게)
+    const licenses = await query(
+      `SELECT 
+        license_type,
+        license_key,
+        end_date,
+        DATEDIFF(end_date, CURDATE()) as remaining_days,
+        is_active
+      FROM licenses 
+      WHERE user_id = ? AND is_active = TRUE`,
+      [user.id]
+    );
+
+    // 출석 라이선스 찾기
+    const attendLicense = licenses.find(l => l.license_type === 'attend');
+
     // 버전 정보 (필요에 따라 데이터베이스에서 조회하도록 변경 가능)
     const versionData = {
       version: "1.0.0",
@@ -273,7 +318,25 @@ router.post('/version', authenticateToken, async (req, res) => {
       releaseNotes: "새로운 LMS 시스템으로 업데이트되었습니다."
     };
 
-    res.json(formatLegacyResponse(true, versionData));
+    const response = formatLegacyResponse(true, versionData);
+
+    // ✅ 라이선스 정보를 header에 추가 (user API와 동일)
+    response.header.appVersion = "1.0.0";
+    response.header.licenses = {
+      attend: attendLicense ? {
+        license: attendLicense.license_key,
+        licenseTo: attendLicense.end_date,
+        remainingDays: attendLicense.remaining_days
+      } : {
+        license: null,
+        licenseTo: null,
+        remainingDays: 0
+      }
+    };
+
+    console.log(`✅ 버전 정보 조회: 라이선스 잔여일 ${attendLicense ? attendLicense.remaining_days : 0}일`);
+
+    res.json(response);
 
   } catch (error) {
     console.error('Legacy version error:', error);
@@ -295,7 +358,7 @@ router.post('/student/get/all', authenticateToken, async (req, res) => {
     const students = await query(`
       SELECT 
         s.id,
-        s.student_number as identifier,
+        s.attendance_number as identifier,
         s.name,
         s.parent_phone as mobile,
         1 as epiVersion,
@@ -323,6 +386,7 @@ router.post('/student/get/all', authenticateToken, async (req, res) => {
     res.json(formatLegacyResponse(true, legacyStudents));
 
     console.log(`✅ 레거시 전체 학생 조회: ${legacyStudents.length}명`);
+    console.log('📋 학생 목록:', legacyStudents.map(s => `${s.identifier} - ${s.name}`).join(', '));
 
   } catch (error) {
     console.error('Legacy get all students error:', error);
@@ -353,7 +417,7 @@ router.post('/student/get', authenticateToken, async (req, res) => {
     const students = await query(`
       SELECT 
         s.id,
-        s.student_number as identifier,
+        s.attendance_number as identifier,
         s.name,
         s.parent_phone as mobile,
         1 as epiVersion,
@@ -443,7 +507,7 @@ router.post('/student/state/set', authenticateToken, async (req, res) => {
     const updatedStudents = await query(`
       SELECT 
         s.id,
-        s.student_number as identifier,
+        s.attendance_number as identifier,
         s.name,
         s.parent_phone as mobile,
         1 as epiVersion,

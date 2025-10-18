@@ -6,83 +6,113 @@ import {
   TextField,
   Card,
   CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
   DialogContent,
   DialogActions,
   Grid,
   Chip,
-  Avatar
+  Avatar,
+  Alert,
+  Snackbar,
+  IconButton
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Search as SearchIcon,
-  Phone as PhoneIcon,
-  Email as EmailIcon
+  Search as SearchIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../components/common/DraggableDialog'
+import { instructorService } from '../services/apiService'
+import { formatPhoneNumber, formatCurrency, parseCurrency, formatDateForInput } from '../utils/formatters'
 
 const TeacherPage = () => {
-  const [teachers, setTeachers] = useState([])
+  const [instructors, setInstructors] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingTeacher, setEditingTeacher] = useState(null)
+  const [editingInstructor, setEditingInstructor] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 25
+  })
+  
+  // 알림 상태
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  })
 
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     email: '',
-    subjects: '',
-    experience: '',
-    notes: ''
+    department: '',
+    subject: '',
+    hireDate: '',
+    address: '',
+    notes: '',
+    salary: '',
+    employmentType: 'full-time',
+    status: 'active'
   })
 
-  // 임시 데이터
-  const mockTeachers = [
-    {
-      id: 1,
-      name: '박선생',
-      phone: '010-1111-1111',
-      email: 'teacher1@example.com',
-      subjects: '수학, 물리',
-      experience: '5년',
-      notes: '중고등학교 수학 전문'
-    },
-    {
-      id: 2,
-      name: '김선생',
-      phone: '010-2222-2222',
-      email: 'teacher2@example.com',
-      subjects: '영어',
-      experience: '8년',
-      notes: '영어회화 및 문법 전문'
-    }
-  ]
-
   useEffect(() => {
-    loadTeachers()
-  }, [])
+    loadInstructors()
+  }, [pagination.currentPage, searchTerm])
 
-  const loadTeachers = async () => {
+  const loadInstructors = async () => {
     setLoading(true)
     try {
-      setTimeout(() => {
-        setTeachers(mockTeachers)
-        setLoading(false)
-      }, 500)
+      console.log('🔍 강사 목록 로딩 시작...')
+      const response = await instructorService.getInstructors(
+        pagination.currentPage,
+        pagination.itemsPerPage,
+        searchTerm
+      )
+      
+      console.log('✅ 강사 목록 로딩 성공:', response)
+      
+      // 🔍 급여 디버깅 로그 추가
+      if (response.success && response.data.instructors) {
+        console.log('===== 강사 급여 디버깅 =====');
+        response.data.instructors.forEach(instructor => {
+          console.log(`ID ${instructor.id} - ${instructor.name}:`);
+          console.log('  - salary 원본 값:', instructor.salary);
+          console.log('  - typeof:', typeof instructor.salary);
+        });
+        console.log('============================');
+      }
+      
+      if (response.success) {
+        setInstructors(response.data.instructors || [])
+        setPagination(prev => ({
+          ...prev,
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalItems: response.data.pagination?.totalItems || 0
+        }))
+      }
     } catch (error) {
-      console.error('강사 데이터 로딩 실패:', error)
+      console.error('❌ 강사 목록 로딩 실패:', error)
+      showSnackbar('강사 목록을 불러오는데 실패했습니다.', 'error')
+    } finally {
       setLoading(false)
     }
+  }
+
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    })
+  }
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }))
   }
 
   const resetForm = () => {
@@ -90,18 +120,35 @@ const TeacherPage = () => {
       name: '',
       phone: '',
       email: '',
-      subjects: '',
-      experience: '',
-      notes: ''
+      department: '',
+      subject: '',
+      hireDate: '',
+      address: '',
+      notes: '',
+      salary: '',
+      employmentType: 'full-time',
+      status: 'active'
     })
   }
 
-  const handleOpenDialog = (teacher = null) => {
-    if (teacher) {
-      setEditingTeacher(teacher)
-      setFormData(teacher)
+  const handleOpenDialog = (instructor = null) => {
+    if (instructor) {
+      setEditingInstructor(instructor)
+      setFormData({
+        name: instructor.name || '',
+        phone: formatPhoneNumber(instructor.phone || ''),
+        email: instructor.email || '',
+        department: instructor.department || '',
+        subject: instructor.subject || '',
+        hireDate: formatDateForInput(instructor.hire_date) || '', // 날짜 형식 변환
+        address: instructor.address || '',
+        notes: instructor.notes || '',
+        salary: instructor.salary ? formatCurrency(instructor.salary.toString()) : '',
+        employmentType: instructor.employment_type || 'full-time',
+        status: instructor.status || 'active'
+      })
     } else {
-      setEditingTeacher(null)
+      setEditingInstructor(null)
       resetForm()
     }
     setDialogOpen(true)
@@ -109,14 +156,26 @@ const TeacherPage = () => {
 
   const handleCloseDialog = () => {
     setDialogOpen(false)
-    setEditingTeacher(null)
+    setEditingInstructor(null)
     resetForm()
   }
 
   const handleInputChange = (field) => (event) => {
+    let value = event.target.value
+
+    // 전화번호 필드 자동 포맷팅
+    if (field === 'phone') {
+      value = formatPhoneNumber(value)
+    }
+
+    // 급여 필드 자동 포맷팅
+    if (field === 'salary') {
+      value = formatCurrency(value)
+    }
+
     setFormData(prev => ({
       ...prev,
-      [field]: event.target.value
+      [field]: value
     }))
   }
 
@@ -124,43 +183,65 @@ const TeacherPage = () => {
     event.preventDefault()
     
     try {
-      if (editingTeacher) {
-        console.log('강사 수정:', formData)
-        setTeachers(prev => prev.map(teacher => 
-          teacher.id === editingTeacher.id 
-            ? { ...formData, id: editingTeacher.id }
-            : teacher
-        ))
-      } else {
-        console.log('강사 추가:', formData)
-        const newTeacher = {
-          ...formData,
-          id: Date.now()
+      // 저장용 데이터 준비 (포맷 제거)
+      const submitData = {
+        ...formData,
+        salary: parseCurrency(formData.salary) // 급여는 순수 숫자로 변환
+      }
+
+      if (editingInstructor) {
+        console.log('📝 강사 수정 중...', submitData)
+        const response = await instructorService.updateInstructor(
+          editingInstructor.id,
+          submitData
+        )
+        
+        if (response.success) {
+          console.log('✅ 강사 수정 성공!')
+          showSnackbar('강사 정보가 수정되었습니다.')
+          loadInstructors()
         }
-        setTeachers(prev => [newTeacher, ...prev])
+      } else {
+        console.log('➕ 강사 추가 중...', submitData)
+        const response = await instructorService.createInstructor(submitData)
+        
+        if (response.success) {
+          console.log('✅ 강사 추가 성공!')
+          showSnackbar('강사가 추가되었습니다.')
+          loadInstructors()
+        }
       }
       
       handleCloseDialog()
     } catch (error) {
-      console.error('강사 저장 실패:', error)
+      console.error('❌ 강사 저장 실패:', error)
+      showSnackbar(
+        error.response?.data?.message || '강사 저장 중 오류가 발생했습니다.',
+        'error'
+      )
     }
   }
 
-  const handleDelete = async (teacherId) => {
+  const handleDelete = async (instructorId) => {
     if (window.confirm('정말 삭제하시겠습니까?')) {
       try {
-        console.log('강사 삭제:', teacherId)
-        setTeachers(prev => prev.filter(teacher => teacher.id !== teacherId))
+        console.log('🗑️ 강사 삭제 중...', instructorId)
+        const response = await instructorService.deleteInstructor(instructorId)
+        
+        if (response.success) {
+          console.log('✅ 강사 삭제 성공!')
+          showSnackbar('강사가 삭제되었습니다.')
+          loadInstructors()
+        }
       } catch (error) {
-        console.error('강사 삭제 실패:', error)
+        console.error('❌ 강사 삭제 실패:', error)
+        showSnackbar(
+          error.response?.data?.message || '강사 삭제 중 오류가 발생했습니다.',
+          'error'
+        )
       }
     }
   }
-
-  const filteredTeachers = teachers.filter(teacher =>
-    teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.subjects.toLowerCase().includes(searchTerm.toLowerCase())
-  )
 
   // DataGrid 컬럼 정의
   const columns = [
@@ -177,7 +258,7 @@ const TeacherPage = () => {
         return (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <Avatar sx={{ width: 40, height: 40 }}>
-              {params.row.name.charAt(0)}
+              {params.row.name?.charAt(0) || '?'}
             </Avatar>
           </Box>
         )
@@ -199,13 +280,30 @@ const TeacherPage = () => {
       }
     },
     {
-      field: 'subjects',
+      field: 'department',
+      headerName: '학과',
+      width: 120,
+      minWidth: 100,
+      maxWidth: 180,
+      resizable: true,
+      renderCell: (params) => {
+        return (
+          <Typography variant="body2" noWrap>
+            {params.value || '-'}
+          </Typography>
+        )
+      }
+    },
+    {
+      field: 'subject',
       headerName: '담당 과목',
       width: 200,
       minWidth: 150,
       maxWidth: 300,
       resizable: true,
       renderCell: (params) => {
+        if (!params.value) return <Typography variant="body2">-</Typography>
+        
         return (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
             {params.value.split(',').map((subject, index) => (
@@ -220,16 +318,16 @@ const TeacherPage = () => {
       }
     },
     {
-      field: 'experience',
-      headerName: '경력',
-      width: 100,
-      minWidth: 80,
-      maxWidth: 150,
+      field: 'lectures',
+      headerName: '담당 강의',
+      width: 180,
+      minWidth: 150,
+      maxWidth: 250,
       resizable: true,
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
-            {params.value}
+            {params.value || '미배정'}
           </Typography>
         )
       }
@@ -244,7 +342,7 @@ const TeacherPage = () => {
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
-            {params.value}
+            {params.value || '-'}
           </Typography>
         )
       }
@@ -259,8 +357,32 @@ const TeacherPage = () => {
       renderCell: (params) => {
         return (
           <Typography variant="body2" noWrap>
-            {params.value}
+            {params.value || '-'}
           </Typography>
+        )
+      }
+    },
+    {
+      field: 'status',
+      headerName: '상태',
+      width: 100,
+      minWidth: 80,
+      maxWidth: 120,
+      resizable: true,
+      renderCell: (params) => {
+        const statusMap = {
+          active: { label: '재직', color: 'success' },
+          inactive: { label: '휴직', color: 'warning' },
+          resigned: { label: '퇴사', color: 'error' }
+        }
+        const status = statusMap[params.value] || { label: params.value, color: 'default' }
+        
+        return (
+          <Chip
+            label={status.label}
+            color={status.color}
+            size="small"
+          />
         )
       }
     },
@@ -319,7 +441,7 @@ const TeacherPage = () => {
             <Grid item xs={12} sm={8}>
               <TextField
                 fullWidth
-                placeholder="강사 이름 또는 담당 과목 검색"
+                placeholder="강사 이름, 학과, 과목 검색"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 InputProps={{
@@ -329,7 +451,7 @@ const TeacherPage = () => {
             </Grid>
             <Grid item xs={12} sm={4}>
               <Typography variant="body2" color="text.secondary">
-                총 {filteredTeachers.length}명
+                총 {pagination.totalItems}명
               </Typography>
             </Grid>
           </Grid>
@@ -340,12 +462,12 @@ const TeacherPage = () => {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            강사 목록 ({filteredTeachers.length}명)
+            강사 목록 ({instructors.length}명)
           </Typography>
 
           <Box sx={{ height: 600, width: '100%', overflow: 'auto' }}>
             <DataGrid
-              rows={filteredTeachers}
+              rows={instructors}
               columns={columns}
               loading={loading}
               pageSizeOptions={[10, 25, 50, 100]}
@@ -357,15 +479,10 @@ const TeacherPage = () => {
               disableRowSelectionOnClick
               getRowHeight={() => 60}
               autoHeight={false}
-              // 컬럼 드래그 앤 드롭 활성화
               disableColumnReorder={false}
-              // 컬럼 리사이징 활성화
               disableColumnResize={false}
-              // 컬럼 메뉴 활성화
               disableColumnMenu={false}
-              // 컬럼 필터 활성화
               disableColumnFilter={false}
-              // 컬럼 정렬 활성화
               disableColumnSort={false}
               sx={{
                 minWidth: 1000,
@@ -385,14 +502,12 @@ const TeacherPage = () => {
                 '& .MuiDataGrid-columnHeader': {
                   whiteSpace: 'nowrap'
                 },
-                // 컬럼 경계선 스타일링
                 '& .MuiDataGrid-columnSeparator': {
                   display: 'block',
                   '&:hover': {
                     color: 'primary.main'
                   }
                 },
-                // 컬럼 헤더 드래그 가능 스타일
                 '& .MuiDataGrid-columnHeader:hover .MuiDataGrid-columnSeparator': {
                   visibility: 'visible'
                 }
@@ -429,7 +544,7 @@ const TeacherPage = () => {
         disableEscapeKeyDown
         maxWidth="md"
         fullWidth
-        title={editingTeacher ? '강사 정보 수정' : '새 강사 추가'}
+        title={editingInstructor ? '강사 정보 수정' : '새 강사 추가'}
       >
         <DialogContent>
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
@@ -464,20 +579,60 @@ const TeacherPage = () => {
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="경력"
-                  value={formData.experience}
-                  onChange={handleInputChange('experience')}
-                  helperText="예: 5년"
+                  label="학과"
+                  value={formData.department}
+                  onChange={handleInputChange('department')}
                 />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="담당 과목"
+                  value={formData.subject}
+                  onChange={handleInputChange('subject')}
+                  helperText="쉼표로 구분 (예: 수학, 영어)"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="입사일"
+                  type="date"
+                  value={formData.hireDate}
+                  onChange={handleInputChange('hireDate')}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="급여"
+                  value={formData.salary}
+                  onChange={handleInputChange('salary')}
+                  placeholder="예: 5,000,000"
+                  helperText="자동으로 천 단위 콤마가 추가됩니다"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="고용 형태"
+                  value={formData.employmentType}
+                  onChange={handleInputChange('employmentType')}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="full-time">정규직</option>
+                  <option value="part-time">시간강사</option>
+                  <option value="contract">계약직</option>
+                </TextField>
               </Grid>
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="담당 과목 *"
-                  value={formData.subjects}
-                  onChange={handleInputChange('subjects')}
-                  helperText="쉼표로 구분하여 입력 (예: 수학, 영어, 과학)"
-                  required
+                  label="주소"
+                  value={formData.address}
+                  onChange={handleInputChange('address')}
                 />
               </Grid>
               <Grid item xs={12}>
@@ -500,12 +655,28 @@ const TeacherPage = () => {
           <Button
             onClick={handleSubmit}
             variant="contained"
-            disabled={editingTeacher ? false : (!formData.name || !formData.phone || !formData.subjects)}
+            disabled={!formData.name || !formData.phone}
           >
-            {editingTeacher ? '수정' : '추가'}
+            {editingInstructor ? '수정' : '추가'}
           </Button>
         </DialogActions>
       </DraggableDialog>
+
+      {/* 알림 스낵바 */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

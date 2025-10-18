@@ -4,7 +4,6 @@ import {
   Typography,
   Card,
   CardContent,
-  Avatar,
   Grid,
   Chip
 } from '@mui/material'
@@ -13,9 +12,11 @@ import {
   Sms as SmsIcon,
   AccessTime as TimeIcon
 } from '@mui/icons-material'
+import { useAttendance } from '../../contexts/AttendanceContext'
 
 const DashboardHeader = ({ user }) => {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const { students } = useAttendance()
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -25,12 +26,12 @@ const DashboardHeader = ({ user }) => {
     return () => clearInterval(timer)
   }, [])
 
-  // 임시 데이터
+  // 실제 데이터 계산
   const stats = {
-    innerStudents: 85,
-    totalStudents: 120,
-    smsBalance: 15420,
-    licenseRemainDays: 45
+    innerStudents: students.filter(s => s.status === 'present' || s.status === 'late').length,
+    totalStudents: students.length,
+    smsBalance: 15420, // TODO: API에서 가져오기
+    licenseRemainDays: 45 // TODO: API에서 가져오기
   }
 
   const formatTime = (date) => {

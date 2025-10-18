@@ -25,9 +25,10 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://192.168.0.17:5000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
-        secure: false
+        secure: false,
+        rewrite: (path) => path
       }
     }
   },
