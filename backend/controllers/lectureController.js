@@ -13,13 +13,15 @@ class LectureController {
         instructorId = '',
         status = ''
       } = req.query;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
       const result = await LectureModel.getLectures({
         page: parseInt(page),
         limit: parseInt(limit),
         search,
         instructorId,
-        status
+        status,
+        tenantId  // ✅ tenant_id 전달
       });
 
       res.json({
@@ -40,7 +42,8 @@ class LectureController {
   static async getLectureById(req, res) {
     try {
       const { id } = req.params;
-      const lecture = await LectureModel.getLectureById(id);
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
+      const lecture = await LectureModel.getLectureById(id, tenantId);
 
       if (!lecture) {
         return res.status(404).json({
@@ -67,6 +70,7 @@ class LectureController {
   static async createLecture(req, res) {
     try {
       const lectureData = req.body;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
       // 필수 필드 검증
       if (!lectureData.name) {
@@ -76,9 +80,9 @@ class LectureController {
         });
       }
 
-      // 강사 존재 확인 (강사 ID가 제공된 경우)
+      // 강사 존재 확인 (강사 ID가 제공된 경우, 같은 학원 내에서)
       if (lectureData.instructorId) {
-        const instructorExists = await InstructorModel.exists(lectureData.instructorId);
+        const instructorExists = await InstructorModel.exists(lectureData.instructorId, tenantId);
         if (!instructorExists) {
           return res.status(404).json({
             success: false,
@@ -87,10 +91,10 @@ class LectureController {
         }
       }
 
-      // 등록할 학생들 존재 확인 (학생 ID가 제공된 경우)
+      // 등록할 학생들 존재 확인 (학생 ID가 제공된 경우, 같은 학원 내에서)
       if (lectureData.enrolledStudents && lectureData.enrolledStudents.length > 0) {
         for (const studentId of lectureData.enrolledStudents) {
-          const studentExists = await StudentModel.exists(studentId);
+          const studentExists = await StudentModel.exists(studentId, tenantId);
           if (!studentExists) {
             return res.status(404).json({
               success: false,
@@ -109,7 +113,7 @@ class LectureController {
         });
       }
 
-      const newLecture = await LectureModel.createLecture(lectureData);
+      const newLecture = await LectureModel.createLecture(lectureData, tenantId);
 
       res.status(201).json({
         success: true,
@@ -140,13 +144,15 @@ class LectureController {
     try {
       const { id } = req.params;
       const lectureData = req.body;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
       console.log('🔍 강의 수정 요청:');
       console.log('  - ID:', id);
+      console.log('  - tenant_id:', tenantId);
       console.log('  - 받은 데이터:', JSON.stringify(lectureData, null, 2));
 
-      // 강의 존재 확인
-      const exists = await LectureModel.exists(id);
+      // 강의 존재 확인 (같은 학원 내에서)
+      const exists = await LectureModel.exists(id, tenantId);
       if (!exists) {
         return res.status(404).json({
           success: false,
@@ -225,9 +231,10 @@ class LectureController {
   static async deleteLecture(req, res) {
     try {
       const { id } = req.params;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
-      // 강의 존재 확인
-      const exists = await LectureModel.exists(id);
+      // 강의 존재 확인 (같은 학원 내에서)
+      const exists = await LectureModel.exists(id, tenantId);
       if (!exists) {
         return res.status(404).json({
           success: false,
@@ -235,7 +242,7 @@ class LectureController {
         });
       }
 
-      await LectureModel.deleteLecture(id);
+      await LectureModel.deleteLecture(id, tenantId);
 
       res.json({
         success: true,

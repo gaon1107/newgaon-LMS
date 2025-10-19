@@ -2,11 +2,17 @@ const { query, transaction } = require('../config/database');
 
 class LectureModel {
   // 강의 목록 조회 (페이지네이션, 검색 포함)
-  static async getLectures({ page = 1, limit = 20, search = '', instructorId = '', status = '' }) {
+  static async getLectures({ page = 1, limit = 20, search = '', instructorId = '', status = '', tenantId = null }) {
     try {
       const offset = (page - 1) * limit;
       let whereClauses = ['l.is_active = true'];
       let queryParams = [];
+
+      // ✅ tenant_id 필터링
+      if (tenantId) {
+        whereClauses.push('l.tenant_id = ?');
+        queryParams.push(tenantId);
+      }
 
       // 검색 조건
       if (search) {
@@ -99,8 +105,16 @@ class LectureModel {
   }
 
   // 강의 상세 조회
-  static async getLectureById(id) {
+  static async getLectureById(id, tenantId = null) {
     try {
+      let whereClauses = ['l.id = ?', 'l.is_active = true'];
+      let params = [id];
+
+      // ✅ tenant_id 필터링
+      if (tenantId) {
+        whereClauses.push('l.tenant_id = ?');
+        params.push(tenantId);
+      }
       const lectureQuery = `
         SELECT
           l.*,
@@ -116,11 +130,11 @@ class LectureModel {
         LEFT JOIN instructors i ON l.instructor_id = i.id AND i.is_active = true
         LEFT JOIN student_lectures sl ON l.id = sl.lecture_id AND sl.is_active = true
         LEFT JOIN students s ON sl.student_id = s.id AND s.is_active = true
-        WHERE l.id = ? AND l.is_active = true
+        WHERE ${whereClauses.join(' AND ')}
         GROUP BY l.id
       `;
 
-      const lectures = await query(lectureQuery, [id]);
+      const lectures = await query(lectureQuery, params);
       if (lectures.length === 0) {
         return null;
       }
@@ -150,7 +164,7 @@ class LectureModel {
   }
 
   // 강의 추가
-  static async createLecture(lectureData) {
+  static async createLecture(lectureData, tenantId) {
     try {
       const result = await transaction(async (conn) => {
         const {
@@ -158,14 +172,14 @@ class LectureModel {
           ...basicData
         } = lectureData;
 
-        // 강의 기본 정보 삽입 (실제 테이블 구조: id는 VARCHAR(50))
+        // ✅ 강의 기본 정보 삽입 (tenant_id 포함, 실제 테이블 구조: id는 VARCHAR(50))
         const lectureId = basicData.id || `lecture_${Date.now()}`;
 
         const insertQuery = `
           INSERT INTO lectures (
             id, name, teacher_name, subject,
-            schedule, fee, capacity, description
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            schedule, fee, capacity, description, tenant_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
@@ -176,7 +190,8 @@ class LectureModel {
           basicData.schedule || null,
           basicData.fee || 0,
           basicData.capacity || basicData.maxStudents || 0,
-          basicData.description || null
+          basicData.description || null,
+          tenantId  // ✅ tenant_id 추가
         ];
 
         await conn.execute(insertQuery, insertParams);
@@ -229,13 +244,25 @@ class LectureModel {
   }
 
   // 강의 정보 수정
-  static async updateLecture(id, lectureData) {
+  static async updateLecture(id, lectureData, tenantId = null) {
     try {
       const result = await transaction(async (conn) => {
         const {
           enrolledStudents = [],
           ...basicData
         } = lectureData;
+
+        // ✅ tenant_id 필터링: 수정 권한 확인
+        if (tenantId) {
+          const [lecture] = await conn.execute(
+            'SELECT id FROM lectures WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
+          );
+
+          if (lecture.length === 0) {
+            throw new Error('해당 강의를 찾을 수 없거나 수정 권한이 없습니다.');
+          }
+        }
 
         // 강의 기본 정보 업데이트 (실제 테이블 구조에 맞춤)
         const updateQuery = `
@@ -340,9 +367,21 @@ class LectureModel {
 
   // 강의 삭제 (소프트 삭제)
   // 강의 삭제 (완전 삭제)
-  static async deleteLecture(id) {
+  static async deleteLecture(id, tenantId = null) {
     try {
       await transaction(async (conn) => {
+        // ✅ tenant_id 필터링: 삭제 권한 확인
+        if (tenantId) {
+          const [lecture] = await conn.execute(
+            'SELECT id FROM lectures WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
+          );
+
+          if (lecture.length === 0) {
+            throw new Error('해당 강의를 찾을 수 없거나 삭제 권한이 없습니다.');
+          }
+        }
+
         // 등록된 학생들 조회 (수강료 재계산용)
         const [students] = await conn.execute(
           'SELECT student_id FROM student_lectures WHERE lecture_id = ?',
@@ -392,12 +431,18 @@ class LectureModel {
   }
 
   // 강의 존재 확인
-  static async exists(id) {
+  static async exists(id, tenantId = null) {
     try {
-      const [result] = await query(
-        'SELECT COUNT(*) as count FROM lectures WHERE id = ? AND is_active = true',
-        [id]
-      );
+      let query_str = 'SELECT COUNT(*) as count FROM lectures WHERE id = ? AND is_active = true';
+      let params = [id];
+
+      // ✅ tenant_id 필터링 추가
+      if (tenantId) {
+        query_str += ' AND tenant_id = ?';
+        params.push(tenantId);
+      }
+
+      const [result] = await query(query_str, params);
       return result.count > 0;
     } catch (error) {
       console.error('LectureModel.exists error:', error);

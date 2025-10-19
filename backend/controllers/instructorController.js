@@ -10,12 +10,14 @@ class InstructorController {
         search = '',
         departmentId = ''
       } = req.query;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
       const result = await InstructorModel.getInstructors({
         page: parseInt(page),
         limit: parseInt(limit),
         search,
-        departmentId
+        departmentId,
+        tenantId  // ✅ tenant_id 전달
       });
 
       res.json({
@@ -36,7 +38,8 @@ class InstructorController {
   static async getInstructorById(req, res) {
     try {
       const { id } = req.params;
-      const instructor = await InstructorModel.getInstructorById(id);
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
+      const instructor = await InstructorModel.getInstructorById(id, tenantId);
 
       if (!instructor) {
         return res.status(404).json({
@@ -63,6 +66,7 @@ class InstructorController {
   static async createInstructor(req, res) {
     try {
       const instructorData = req.body;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
       // 필수 필드 검증
       if (!instructorData.name) {
@@ -72,7 +76,7 @@ class InstructorController {
         });
       }
 
-      const newInstructor = await InstructorModel.createInstructor(instructorData);
+      const newInstructor = await InstructorModel.createInstructor(instructorData, tenantId);
 
       res.status(201).json({
         success: true,
@@ -103,9 +107,10 @@ class InstructorController {
     try {
       const { id } = req.params;
       const instructorData = req.body;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
-      // 강사 존재 확인
-      const exists = await InstructorModel.exists(id);
+      // 강사 존재 확인 (같은 학원 내에서)
+      const exists = await InstructorModel.exists(id, tenantId);
       if (!exists) {
         return res.status(404).json({
           success: false,
@@ -121,7 +126,7 @@ class InstructorController {
         });
       }
 
-      const updatedInstructor = await InstructorModel.updateInstructor(id, instructorData);
+      const updatedInstructor = await InstructorModel.updateInstructor(id, instructorData, tenantId);
 
       res.json({
         success: true,
@@ -151,9 +156,10 @@ class InstructorController {
   static async deleteInstructor(req, res) {
     try {
       const { id } = req.params;
+      const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
-      // 강사 존재 확인
-      const exists = await InstructorModel.exists(id);
+      // 강사 존재 확인 (같은 학원 내에서)
+      const exists = await InstructorModel.exists(id, tenantId);
       if (!exists) {
         return res.status(404).json({
           success: false,
@@ -161,7 +167,7 @@ class InstructorController {
         });
       }
 
-      await InstructorModel.deleteInstructor(id);
+      await InstructorModel.deleteInstructor(id, tenantId);
 
       res.json({
         success: true,

@@ -1,8 +1,16 @@
 const express = require('express');
-const { login, refreshToken, getCurrentUser } = require('../controllers/authController');
+const { login, refreshToken, getCurrentUser, registerAcademy } = require('../controllers/authController');
 const { authenticateToken } = require('../middlewares/auth');
 
 const router = express.Router();
+
+/**
+ * @route   POST /api/auth/register-academy
+ * @desc    학원 회원가입 (신규 학원 등록 + 관리자 계정 생성)
+ * @access  Public
+ * @body    academyName, academyCode, adminUsername, adminPassword, businessNumber (선택), ownerName (선택), phone (선택), email (선택), address (선택), adminName (선택)
+ */
+router.post('/register-academy', registerAcademy);
 
 /**
  * @route   POST /api/auth/login

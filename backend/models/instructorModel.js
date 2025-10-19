@@ -33,11 +33,17 @@ function formatDateForMySQL(dateString) {
 
 class InstructorModel {
   // 강사 목록 조회 (페이지네이션, 검색 포함)
-  static async getInstructors({ page = 1, limit = 20, search = '', departmentId = '' }) {
+  static async getInstructors({ page = 1, limit = 20, search = '', departmentId = '', tenantId = null }) {
     try {
       const offset = (page - 1) * limit;
       let whereClauses = ['i.is_active = true'];
       let queryParams = [];
+
+      // ✅ tenant_id 필터링
+      if (tenantId) {
+        whereClauses.push('i.tenant_id = ?');
+        queryParams.push(tenantId);
+      }
 
       // 검색 조건
       if (search) {
@@ -119,8 +125,17 @@ class InstructorModel {
   }
 
   // 강사 상세 조회
-  static async getInstructorById(id) {
+  static async getInstructorById(id, tenantId = null) {
     try {
+      let whereClauses = ['i.id = ?', 'i.is_active = true'];
+      let params = [id];
+
+      // ✅ tenant_id 필터링
+      if (tenantId) {
+        whereClauses.push('i.tenant_id = ?');
+        params.push(tenantId);
+      }
+
       const instructorQuery = `
         SELECT
           i.*,
@@ -132,11 +147,11 @@ class InstructorModel {
         FROM instructors i
         LEFT JOIN instructor_lectures il ON i.id = il.instructor_id AND il.is_active = true
         LEFT JOIN lectures l ON il.lecture_id = l.id AND l.is_active = true
-        WHERE i.id = ? AND i.is_active = true
+        WHERE ${whereClauses.join(' AND ')}
         GROUP BY i.id
       `;
 
-      const instructors = await query(instructorQuery, [id]);
+      const instructors = await query(instructorQuery, params);
       if (instructors.length === 0) {
         return null;
       }
@@ -165,7 +180,7 @@ class InstructorModel {
   }
 
   // 강사 추가
-  static async createInstructor(instructorData) {
+  static async createInstructor(instructorData, tenantId) {
     try {
       const result = await transaction(async (conn) => {
         const {
@@ -173,13 +188,13 @@ class InstructorModel {
           ...basicData
         } = instructorData;
 
-        // 강사 기본 정보 삽입
+        // ✅ 강사 기본 정보 삽입 (tenant_id 포함)
         const insertQuery = `
           INSERT INTO instructors (
             name, department, subject, phone, email, hire_date,
             address, notes, salary, employment_type, status,
-            profile_image_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            profile_image_url, tenant_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
@@ -194,7 +209,8 @@ class InstructorModel {
           basicData.salary || 0,
           basicData.employmentType || 'full-time',
           basicData.status || 'active',
-          basicData.profileImage || null
+          basicData.profileImage || null,
+          tenantId  // ✅ tenant_id 추가
         ];
 
         const [insertResult] = await conn.execute(insertQuery, insertParams);
@@ -231,13 +247,25 @@ class InstructorModel {
   }
 
   // 강사 정보 수정
-  static async updateInstructor(id, instructorData) {
+  static async updateInstructor(id, instructorData, tenantId = null) {
     try {
       const result = await transaction(async (conn) => {
         const {
           assignedLectures = [],
           ...basicData
         } = instructorData;
+
+        // ✅ tenant_id 필터링: 수정 권한 확인
+        if (tenantId) {
+          const [instructor] = await conn.execute(
+            'SELECT id FROM instructors WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
+          );
+
+          if (instructor.length === 0) {
+            throw new Error('해당 강사를 찾을 수 없거나 수정 권한이 없습니다.');
+          }
+        }
 
         // 강사 기본 정보 업데이트
         const updateQuery = `
@@ -320,9 +348,21 @@ class InstructorModel {
 
   // 강사 삭제 (소프트 삭제)
   // 강사 삭제 (완전 삭제)
-  static async deleteInstructor(id) {
+  static async deleteInstructor(id, tenantId = null) {
     try {
       await transaction(async (conn) => {
+        // ✅ tenant_id 필터링: 삭제 권한 확인
+        if (tenantId) {
+          const [instructor] = await conn.execute(
+            'SELECT id FROM instructors WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
+          );
+
+          if (instructor.length === 0) {
+            throw new Error('해당 강사를 찾을 수 없거나 삭제 권한이 없습니다.');
+          }
+        }
+
         // 관련 강의들의 강사 정보 초기화
         await conn.execute(
           'UPDATE lectures SET instructor_id = NULL WHERE instructor_id = ?',
@@ -350,12 +390,18 @@ class InstructorModel {
   }
 
   // 강사 존재 확인
-  static async exists(id) {
+  static async exists(id, tenantId = null) {
     try {
-      const [result] = await query(
-        'SELECT COUNT(*) as count FROM instructors WHERE id = ? AND is_active = true',
-        [id]
-      );
+      let query_str = 'SELECT COUNT(*) as count FROM instructors WHERE id = ? AND is_active = true';
+      let params = [id];
+
+      // ✅ tenant_id 필터링 추가
+      if (tenantId) {
+        query_str += ' AND tenant_id = ?';
+        params.push(tenantId);
+      }
+
+      const [result] = await query(query_str, params);
       return result.count > 0;
     } catch (error) {
       console.error('InstructorModel.exists error:', error);

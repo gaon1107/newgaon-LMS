@@ -129,8 +129,17 @@ class StudentModel {
   }
 
   // 학생 상세 조회
-  static async getStudentById(id) {
+  static async getStudentById(id, tenantId = null) {
     try {
+      let whereClauses = ['s.id = ?', 's.is_active = true'];
+      let params = [id];
+
+      // ✅ tenant_id 필터링 추가
+      if (tenantId) {
+        whereClauses.push('s.tenant_id = ?');
+        params.push(tenantId);
+      }
+
       const studentQuery = `
         SELECT
           s.*,
@@ -142,11 +151,11 @@ class StudentModel {
         FROM students s
         LEFT JOIN student_lectures sl ON s.id = sl.student_id AND sl.is_active = true
         LEFT JOIN lectures l ON sl.lecture_id = l.id AND l.is_active = true
-        WHERE s.id = ? AND s.is_active = true
+        WHERE ${whereClauses.join(' AND ')}
         GROUP BY s.id
       `;
 
-      const students = await query(studentQuery, [id]);
+      const students = await query(studentQuery, params);
       if (students.length === 0) {
         return null;
       }
@@ -216,9 +225,10 @@ class StudentModel {
           while (!isUnique && attempts < 100) {
             attendanceNumber = Math.floor(1000 + Math.random() * 9000).toString();
 
+            // ✅ tenant_id 필터링 추가
             const [existing] = await conn.execute(
-              'SELECT id FROM students WHERE attendance_number = ? AND is_active = true',
-              [attendanceNumber]
+              'SELECT id FROM students WHERE attendance_number = ? AND tenant_id = ? AND is_active = true',
+              [attendanceNumber, tenantId]
             );
 
             if (existing.length === 0) {
@@ -325,7 +335,7 @@ class StudentModel {
   }
 
   // 학생 정보 수정
-  static async updateStudent(id, studentData) {
+  static async updateStudent(id, studentData, tenantId = null) {
     try {
       const result = await transaction(async (conn) => {
         const {
@@ -334,12 +344,30 @@ class StudentModel {
           ...basicData
         } = studentData;
 
-        // 출결번호 중복 확인 (수정 시, 활성 학생만)
-        if (basicData.attendanceNumber) {
-          const [existing] = await conn.execute(
-            'SELECT id FROM students WHERE attendance_number = ? AND id != ? AND is_active = true',
-            [basicData.attendanceNumber, id]
+        // ✅ tenant_id 필터링: 수정 권한 확인
+        if (tenantId) {
+          const [student] = await conn.execute(
+            'SELECT id FROM students WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
           );
+
+          if (student.length === 0) {
+            throw new Error('해당 학생을 찾을 수 없거나 수정 권한이 없습니다.');
+          }
+        }
+
+        // 출결번호 중복 확인 (수정 시, 활성 학생만, 같은 학원 내에서)
+        if (basicData.attendanceNumber) {
+          let checkQuery = 'SELECT id FROM students WHERE attendance_number = ? AND id != ? AND is_active = true';
+          let checkParams = [basicData.attendanceNumber, id];
+
+          // ✅ tenant_id 필터링 추가
+          if (tenantId) {
+            checkQuery += ' AND tenant_id = ?';
+            checkParams.push(tenantId);
+          }
+
+          const [existing] = await conn.execute(checkQuery, checkParams);
 
           if (existing.length > 0) {
             throw new Error('이미 사용 중인 출결번호입니다.');
@@ -452,9 +480,21 @@ class StudentModel {
   }
 
   // 학생 삭제 (완전 삭제)
-  static async deleteStudent(id) {
+  static async deleteStudent(id, tenantId = null) {
     try {
       await transaction(async (conn) => {
+        // ✅ tenant_id 필터링: 삭제 권한 확인
+        if (tenantId) {
+          const [student] = await conn.execute(
+            'SELECT id FROM students WHERE id = ? AND tenant_id = ? AND is_active = true',
+            [id, tenantId]
+          );
+
+          if (student.length === 0) {
+            throw new Error('해당 학생을 찾을 수 없거나 삭제 권한이 없습니다.');
+          }
+        }
+
         // 관련 강의들의 ID를 먼저 가져오기 (학생 수 업데이트용)
         const [relatedLectures] = await conn.execute(`
           SELECT DISTINCT lecture_id FROM student_lectures WHERE student_id = ?
@@ -501,12 +541,18 @@ class StudentModel {
   }
 
   // 학생 존재 확인
-  static async exists(id) {
+  static async exists(id, tenantId = null) {
     try {
-      const [result] = await query(
-        'SELECT COUNT(*) as count FROM students WHERE id = ? AND is_active = true',
-        [id]
-      );
+      let query_str = 'SELECT COUNT(*) as count FROM students WHERE id = ? AND is_active = true';
+      let params = [id];
+
+      // ✅ tenant_id 필터링 추가
+      if (tenantId) {
+        query_str += ' AND tenant_id = ?';
+        params.push(tenantId);
+      }
+
+      const [result] = await query(query_str, params);
       return result.count > 0;
     } catch (error) {
       console.error('StudentModel.exists error:', error);
@@ -594,7 +640,7 @@ class StudentModel {
   }
 
   // 출결번호 중복 확인
-  static async checkAttendanceNumberExists(attendanceNumber, excludeId = null) {
+  static async checkAttendanceNumberExists(attendanceNumber, excludeId = null, tenantId = null) {
     try {
       let query_str = 'SELECT COUNT(*) as count FROM students WHERE attendance_number = ? AND is_active = true';
       let params = [attendanceNumber];
@@ -602,6 +648,12 @@ class StudentModel {
       if (excludeId) {
         query_str += ' AND id != ?';
         params.push(excludeId);
+      }
+
+      // ✅ tenant_id 필터링 추가
+      if (tenantId) {
+        query_str += ' AND tenant_id = ?';
+        params.push(tenantId);
       }
 
       const [result] = await query(query_str, params);

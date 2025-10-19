@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { query } = require('../config/database');
+const { query, transaction } = require('../config/database');
 const { generateTokens, verifyRefreshToken } = require('../middlewares/auth');
 
 // 로그인
@@ -263,8 +263,247 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
+// 학원 회원가입
+const registerAcademy = async (req, res) => {
+  try {
+    const {
+      academyName,
+      academyCode,
+      businessNumber,
+      ownerName,
+      phone,
+      email,
+      address,
+      adminUsername,
+      adminPassword,
+      adminName
+    } = req.body;
+
+    // ✅ 입력값 검증
+    if (!academyName || !academyCode || !adminUsername || !adminPassword) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: '필수 항목을 모두 입력해주세요. (학원명, 학원코드, 관리자ID, 비밀번호)'
+        }
+      });
+    }
+
+    // ✅ 학원코드 형식 검증 (영문, 숫자, 언더스코어만 허용)
+    if (!/^[a-zA-Z0-9_]+$/.test(academyCode)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ACADEMY_CODE',
+          message: '학원코드는 영문, 숫자, 언더스코어(_)만 사용 가능합니다.'
+        }
+      });
+    }
+
+    // ✅ 관리자 아이디 형식 검증
+    if (!/^[a-zA-Z0-9_]+$/.test(adminUsername)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_USERNAME',
+          message: '관리자 아이디는 영문, 숫자, 언더스코어(_)만 사용 가능합니다.'
+        }
+      });
+    }
+
+    // ✅ 비밀번호 강도 검증 (최소 6자)
+    if (adminPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'WEAK_PASSWORD',
+          message: '비밀번호는 최소 6자 이상이어야 합니다.'
+        }
+      });
+    }
+
+    // 트랜잭션으로 원자적 처리
+    const result = await transaction(async (conn) => {
+      // ✅ 1. 학원코드 중복 확인
+      const [existingAcademy] = await conn.execute(
+        'SELECT id FROM tenants WHERE code = ?',
+        [academyCode]
+      );
+
+      if (existingAcademy.length > 0) {
+        throw new Error('DUPLICATE_ACADEMY_CODE:이미 사용 중인 학원코드입니다.');
+      }
+
+      // ✅ 2. 사업자번호 중복 확인 (있을 경우)
+      if (businessNumber) {
+        const [existingBusiness] = await conn.execute(
+          'SELECT id FROM tenants WHERE business_number = ?',
+          [businessNumber]
+        );
+
+        if (existingBusiness.length > 0) {
+          throw new Error('DUPLICATE_BUSINESS_NUMBER:이미 등록된 사업자번호입니다.');
+        }
+      }
+
+      // ✅ 3. 관리자 아이디 중복 확인
+      const [existingUser] = await conn.execute(
+        'SELECT id FROM users WHERE username = ?',
+        [adminUsername]
+      );
+
+      if (existingUser.length > 0) {
+        throw new Error('DUPLICATE_USERNAME:이미 사용 중인 아이디입니다.');
+      }
+
+      // ✅ 4. 이메일 중복 확인 (있을 경우)
+      if (email) {
+        const [existingEmail] = await conn.execute(
+          'SELECT id FROM users WHERE email = ?',
+          [email]
+        );
+
+        if (existingEmail.length > 0) {
+          throw new Error('DUPLICATE_EMAIL:이미 사용 중인 이메일입니다.');
+        }
+      }
+
+      // ✅ 5. tenants 테이블에 학원 등록
+      const [tenantResult] = await conn.execute(
+        `INSERT INTO tenants (
+          name, code, business_number, owner_name,
+          phone, email, address, status, subscription_plan,
+          subscription_start_date, subscription_end_date,
+          max_students, max_instructors, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'basic', CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 1000, 50, NOW())`,
+        [academyName, academyCode, businessNumber || null, ownerName || null,
+         phone || null, email || null, address || null]
+      );
+
+      const tenantId = tenantResult.insertId;
+
+      // ✅ 6. 비밀번호 해싱
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
+
+      // ✅ 7. users 테이블에 관리자 계정 생성
+      const [userResult] = await conn.execute(
+        `INSERT INTO users (
+          username, password_hash, name, email, role,
+          tenant_id, is_active, created_at
+        ) VALUES (?, ?, ?, ?, 'admin', ?, TRUE, NOW())`,
+        [adminUsername, passwordHash, adminName || ownerName || academyName + ' 관리자',
+         email || null, tenantId]
+      );
+
+      const userId = userResult.insertId;
+
+      console.log(`✅ 학원 등록 완료: ${academyName} (tenant_id: ${tenantId})`);
+      console.log(`✅ 관리자 계정 생성: ${adminUsername} (user_id: ${userId})`);
+
+      return {
+        tenantId,
+        userId,
+        username: adminUsername,
+        name: adminName || ownerName || academyName + ' 관리자',
+        email: email || null,
+        role: 'admin'
+      };
+    });
+
+    // ✅ 8. JWT 토큰 생성
+    const user = {
+      id: result.userId,
+      username: result.username,
+      name: result.name,
+      email: result.email,
+      role: result.role,
+      tenant_id: result.tenantId
+    };
+
+    const { accessToken, refreshToken } = generateTokens(user);
+
+    // ✅ 9. 성공 응답
+    res.status(201).json({
+      success: true,
+      message: '학원 등록이 완료되었습니다. 30일 무료 체험이 제공됩니다.',
+      data: {
+        academy: {
+          tenantId: result.tenantId,
+          name: academyName,
+          code: academyCode
+        },
+        user: {
+          id: result.userId,
+          username: result.username,
+          name: result.name,
+          email: result.email,
+          role: result.role
+        },
+        accessToken,
+        refreshToken,
+        trialEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      }
+    });
+
+  } catch (error) {
+    console.error('Register academy error:', error);
+
+    // 커스텀 에러 처리
+    if (error.message.startsWith('DUPLICATE_ACADEMY_CODE:')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_ACADEMY_CODE',
+          message: error.message.split(':')[1]
+        }
+      });
+    }
+
+    if (error.message.startsWith('DUPLICATE_BUSINESS_NUMBER:')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_BUSINESS_NUMBER',
+          message: error.message.split(':')[1]
+        }
+      });
+    }
+
+    if (error.message.startsWith('DUPLICATE_USERNAME:')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_USERNAME',
+          message: error.message.split(':')[1]
+        }
+      });
+    }
+
+    if (error.message.startsWith('DUPLICATE_EMAIL:')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_EMAIL',
+          message: error.message.split(':')[1]
+        }
+      });
+    }
+
+    // 일반 에러
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: '학원 등록 중 오류가 발생했습니다.'
+      }
+    });
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
-  getCurrentUser
+  getCurrentUser,
+  registerAcademy
 };

@@ -37,8 +37,9 @@ const getStudents = async (req, res) => {
 const getStudentById = async (req, res) => {
   try {
     const { id } = req.params;
+    const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
-    const student = await StudentModel.getStudentById(id);
+    const student = await StudentModel.getStudentById(id, tenantId);
 
     if (!student) {
       return res.status(404).json({
@@ -138,14 +139,16 @@ const updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
     const studentData = req.body;
+    const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
     console.log('🔍 학생 수정 요청 받음:');
     console.log('  - ID:', id);
+    console.log('  - tenant_id:', tenantId);
     console.log('  - 받은 출결번호:', studentData.attendanceNumber);
     console.log('  - 전체 데이터:', JSON.stringify(studentData, null, 2));
 
-    // 학생 존재 확인
-    const exists = await StudentModel.exists(id);
+    // 학생 존재 확인 (같은 학원 내에서)
+    const exists = await StudentModel.exists(id, tenantId);
     if (!exists) {
       return res.status(404).json({
         success: false,
@@ -156,7 +159,7 @@ const updateStudent = async (req, res) => {
       });
     }
 
-    const student = await StudentModel.updateStudent(id, studentData);
+    const student = await StudentModel.updateStudent(id, studentData, tenantId);
 
     console.log('🔍 DB에서 업데이트 후 반환된 학생 정보:');
     console.log('  - 이름:', student.name);
@@ -200,9 +203,10 @@ const updateStudent = async (req, res) => {
 const deleteStudent = async (req, res) => {
   try {
     const { id } = req.params;
+    const tenantId = req.user?.tenant_id; // ✅ tenant_id 가져오기
 
-    // 학생 존재 확인
-    const exists = await StudentModel.exists(id);
+    // 학생 존재 확인 (같은 학원 내에서)
+    const exists = await StudentModel.exists(id, tenantId);
     if (!exists) {
       return res.status(404).json({
         success: false,
@@ -213,7 +217,7 @@ const deleteStudent = async (req, res) => {
       });
     }
 
-    await StudentModel.deleteStudent(id);
+    await StudentModel.deleteStudent(id, tenantId);
 
     res.json({
       success: true,
