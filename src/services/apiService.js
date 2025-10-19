@@ -361,4 +361,99 @@ export const dashboardService = {
   }
 }
 
+// 결제 관리 API
+export const paymentService = {
+  // 결제 목록 조회
+  getPayments: async (page = 1, limit = 20, search = '', startDate = '', endDate = '') => {
+    const params = { page, limit }
+    if (search) params.search = search
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
+
+    const response = await apiClient.get('/payments', { params })
+    return response.data
+  },
+
+  // 결제 상세 조회
+  getPayment: async (paymentId) => {
+    const response = await apiClient.get(`/payments/${paymentId}`)
+    return response.data
+  },
+
+  // 결제 추가
+  createPayment: async (paymentData) => {
+    const response = await apiClient.post('/payments', paymentData)
+    return response.data
+  },
+
+  // 결제 정보 수정
+  updatePayment: async (paymentId, paymentData) => {
+    const response = await apiClient.put(`/payments/${paymentId}`, paymentData)
+    return response.data
+  },
+
+  // 결제 삭제
+  deletePayment: async (paymentId) => {
+    const response = await apiClient.delete(`/payments/${paymentId}`)
+    return response.data
+  },
+
+  // 결제 통계 조회
+  getPaymentStats: async (startDate = '', endDate = '') => {
+    const params = {}
+    if (startDate) params.startDate = startDate
+    if (endDate) params.endDate = endDate
+
+    const response = await apiClient.get('/payments/stats', { params })
+    return response.data
+  }
+}
+
+// 학원(Tenant) 관리 API (슈퍼관리자 전용)
+export const tenantService = {
+  // 현재 사용자의 학원 정보 조회
+  getMyTenant: async () => {
+    const response = await apiClient.get('/tenants/me')
+    return response.data
+  },
+
+  // 현재 사용자의 학원 정보 수정
+  updateMyTenant: async (tenantData) => {
+    const response = await apiClient.put('/tenants/me', tenantData)
+    return response.data
+  },
+
+  // 모든 학원 목록 조회
+  getAllTenants: async () => {
+    const response = await apiClient.get('/tenants')
+    return response.data
+  },
+
+  // 특정 학원 상세 정보 조회
+  getTenantById: async (tenantId) => {
+    const response = await apiClient.get(`/tenants/${tenantId}`)
+    return response.data
+  },
+
+  // 학원 정보 수정
+  updateTenant: async (tenantId, tenantData) => {
+    const response = await apiClient.put(`/tenants/${tenantId}`, tenantData)
+    return response.data
+  },
+
+  // 학원 삭제
+  deleteTenant: async (tenantId) => {
+    const response = await apiClient.delete(`/tenants/${tenantId}`)
+    return response.data
+  },
+
+  // 현재 사용자의 학원 탈퇴 (비밀번호 확인)
+  deleteMyTenant: async (password) => {
+    const response = await apiClient.delete('/tenants/me', {
+      data: { password }
+    })
+    return response.data
+  }
+}
+
 export default apiClient

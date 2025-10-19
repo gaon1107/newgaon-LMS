@@ -22,7 +22,8 @@ import {
   Select,
   MenuItem,
   IconButton,
-  Tooltip
+  Tooltip,
+  Alert
 } from '@mui/material'
 import {
   Visibility as ViewIcon,
@@ -33,6 +34,8 @@ import {
 } from '@mui/icons-material'
 import { AuthContext } from '../../contexts/AuthContext'
 import DraggableDialog from '../../components/common/DraggableDialog'
+import { tenantService } from '../../services/apiService'
+import { formatPhoneNumber, formatBusinessNumber, unformatPhoneNumber, unformatBusinessNumber } from '../../utils/formatters'
 
 const MembershipPage = () => {
   const { user } = useContext(AuthContext)
@@ -44,6 +47,7 @@ const MembershipPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   // 신규 등록/수정용 폼 데이터
   const [formData, setFormData] = useState({
@@ -52,80 +56,55 @@ const MembershipPage = () => {
     email: '',
     phone: '',
     address: '',
-    status: 'trial',
+    status: 'active',
     joinDate: new Date().toISOString().split('T')[0],
     expiryDate: '',
     studentCount: 0,
     smsBalance: 5000 // 신규 가입 시 기본 5000원 제공
   })
 
-  // 모의 데이터
-  const mockMembers = [
-    {
-      id: 1,
-      academyName: '가온학원',
-      adminName: '김원장',
-      email: 'gaon@academy.com',
-      phone: '02-1234-5678',
-      address: '서울시 강남구 테헤란로 123',
-      status: 'active',
-      joinDate: '2024-01-15',
-      expiryDate: '2024-12-31',
-      studentCount: 150,
-      lastLogin: '2024-09-20',
-      smsBalance: 15420
-    },
-    {
-      id: 2,
-      academyName: '미래교육원',
-      adminName: '이관리',
-      email: 'future@edu.com',
-      phone: '02-5678-9012',
-      address: '서울시 서초구 서초대로 456',
-      status: 'trial',
-      joinDate: '2024-09-01',
-      expiryDate: '2024-09-30',
-      studentCount: 45,
-      lastLogin: '2024-09-19',
-      smsBalance: 5000
-    },
-    {
-      id: 3,
-      academyName: '수학천재학원',
-      adminName: '박선생',
-      email: 'math@genius.com',
-      phone: '031-1111-2222',
-      address: '경기도 성남시 분당구 판교역로 789',
-      status: 'expired',
-      joinDate: '2023-06-10',
-      expiryDate: '2024-06-09',
-      studentCount: 89,
-      lastLogin: '2024-06-05',
-      smsBalance: 0
-    },
-    {
-      id: 4,
-      academyName: '영어마스터',
-      adminName: '최영어',
-      email: 'english@master.com',
-      phone: '032-3333-4444',
-      address: '인천시 연수구 송도국제대로 321',
-      status: 'active',
-      joinDate: '2024-03-20',
-      expiryDate: '2025-03-19',
-      studentCount: 120,
-      lastLogin: '2024-09-21',
-      smsBalance: 32850
+  // DB에서 학원 목록 조회
+  const fetchTenants = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await tenantService.getAllTenants()
+
+      if (response.success) {
+        // DB 데이터를 UI 형식에 맞게 변환
+        const formattedMembers = response.data.map(tenant => ({
+          id: tenant.id,
+          academyName: tenant.academyName,
+          adminName: tenant.adminName || tenant.ownerName || '-',
+          email: tenant.adminEmail || tenant.email || '-',
+          phone: tenant.phone || '-',
+          address: tenant.address || '-',
+          status: tenant.status,
+          joinDate: tenant.joinDate || tenant.createdAt?.split('T')[0],
+          expiryDate: tenant.expiryDate,
+          studentCount: tenant.studentCount || 0,
+          lastLogin: tenant.lastLogin ? tenant.lastLogin.split('T')[0] : '-',
+          smsBalance: tenant.smsBalance || 0,
+          subscriptionPlan: tenant.subscriptionPlan,
+          businessNumber: tenant.businessNumber,
+          ownerName: tenant.ownerName,
+          maxStudents: tenant.maxStudents,
+          maxInstructors: tenant.maxInstructors
+        }))
+
+        setMembers(formattedMembers)
+        setFilteredMembers(formattedMembers)
+      }
+    } catch (err) {
+      console.error('학원 목록 조회 실패:', err)
+      setError('학원 목록을 불러오는데 실패했습니다.')
+    } finally {
+      setLoading(false)
     }
-  ]
+  }
 
   useEffect(() => {
-    // 데이터 로딩 시뮬레이션
-    setTimeout(() => {
-      setMembers(mockMembers)
-      setFilteredMembers(mockMembers)
-      setLoading(false)
-    }, 1000)
+    fetchTenants()
   }, [])
 
   useEffect(() => {
@@ -151,8 +130,8 @@ const MembershipPage = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'active': return 'success'
-      case 'trial': return 'warning'
-      case 'expired': return 'error'
+      case 'inactive': return 'warning'
+      case 'suspended': return 'error'
       default: return 'default'
     }
   }
@@ -160,8 +139,8 @@ const MembershipPage = () => {
   const getStatusText = (status) => {
     switch (status) {
       case 'active': return '정상'
-      case 'trial': return '체험'
-      case 'expired': return '만료'
+      case 'inactive': return '비활성'
+      case 'suspended': return '정지'
       default: return '알 수 없음'
     }
   }
@@ -175,8 +154,8 @@ const MembershipPage = () => {
       phone: member.phone,
       address: member.address,
       status: member.status,
-      joinDate: member.joinDate,
-      expiryDate: member.expiryDate,
+      joinDate: member.joinDate ? member.joinDate.split('T')[0] : '',
+      expiryDate: member.expiryDate ? member.expiryDate.split('T')[0] : '',
       studentCount: member.studentCount,
       smsBalance: member.smsBalance
     })
@@ -193,8 +172,8 @@ const MembershipPage = () => {
       phone: member.phone,
       address: member.address,
       status: member.status,
-      joinDate: member.joinDate,
-      expiryDate: member.expiryDate,
+      joinDate: member.joinDate ? member.joinDate.split('T')[0] : '',
+      expiryDate: member.expiryDate ? member.expiryDate.split('T')[0] : '',
       studentCount: member.studentCount,
       smsBalance: member.smsBalance
     })
@@ -275,34 +254,126 @@ const MembershipPage = () => {
     }
   }
 
-  const handleSave = () => {
-    if (selectedMember) {
-      // 수정 모드
-      setMembers(members.map(member =>
-        member.id === selectedMember.id ? { ...member, ...formData, lastLogin: new Date().toISOString().split('T')[0] } : member
-      ))
-    } else {
-      // 신규 등록 모드
-      const newMember = {
-        id: Math.max(...members.map(m => m.id)) + 1,
-        ...formData,
-        lastLogin: new Date().toISOString().split('T')[0]
+  const handleSave = async () => {
+    try {
+      if (selectedMember) {
+        // 수정 모드 - API 호출 (포맷 해제 후 전송)
+        const updateData = {
+          name: formData.academyName,
+          businessNumber: formData.businessNumber ? unformatBusinessNumber(formData.businessNumber) : null,
+          ownerName: formData.ownerName || formData.adminName,
+          phone: formData.phone ? unformatPhoneNumber(formData.phone) : null,
+          email: formData.email,
+          address: formData.address,
+          status: formData.status,
+          subscriptionPlan: formData.subscriptionPlan || 'basic',
+          subscriptionEndDate: formData.expiryDate,
+          maxStudents: formData.maxStudents || 1000,
+          maxInstructors: formData.maxInstructors || 50,
+          smsBalance: formData.smsBalance
+        }
+
+        const response = await tenantService.updateTenant(selectedMember.id, updateData)
+
+        if (response.success) {
+          alert('학원 정보가 수정되었습니다.')
+          await fetchTenants() // 목록 새로고침
+        }
+      } else {
+        // 신규 등록은 회원가입 페이지에서만 가능
+        alert('신규 학원 등록은 회원가입 페이지를 이용해주세요.')
       }
-      setMembers([newMember, ...members])
+      handleCloseDialog()
+    } catch (err) {
+      console.error('학원 정보 저장 실패:', err)
+      console.error('에러 상세:', err.response?.data)
+      console.error('에러 메시지:', err.message)
+      alert(`학원 정보 저장에 실패했습니다.\n${err.response?.data?.error || err.message}`)
     }
-    handleCloseDialog()
   }
 
-  const handleStatusChange = (memberId, newStatus) => {
-    setMembers(members.map(member =>
-      member.id === memberId ? { ...member, status: newStatus } : member
-    ))
+  const handleStatusChange = async (memberId, newStatus) => {
+    try {
+      // 해당 학원 정보 찾기
+      const member = members.find(m => m.id === memberId)
+      if (!member) {
+        alert('학원을 찾을 수 없습니다.')
+        return
+      }
+
+      // 상태 변경 확인
+      const statusText = {
+        'active': '정상',
+        'inactive': '비활성',
+        'suspended': '정지'
+      }
+
+      if (!window.confirm(`"${member.academyName}" 학원을 "${statusText[newStatus]}" 상태로 변경하시겠습니까?`)) {
+        return
+      }
+
+      // 백엔드에 상태 변경 요청 (undefined 값을 null로 변환, 포맷 해제)
+      const updateData = {
+        name: member.academyName,
+        businessNumber: member.businessNumber ? unformatBusinessNumber(member.businessNumber) : null,
+        ownerName: member.ownerName || null,
+        phone: member.phone ? unformatPhoneNumber(member.phone) : null,
+        email: member.email || null,
+        address: member.address || null,
+        status: newStatus,
+        subscriptionPlan: member.subscriptionPlan || 'basic',
+        subscriptionEndDate: member.expiryDate || null,
+        maxStudents: member.maxStudents || 1000,
+        maxInstructors: member.maxInstructors || 50,
+        smsBalance: member.smsBalance || 5000
+      }
+
+      const response = await tenantService.updateTenant(memberId, updateData)
+
+      if (response.success) {
+        // 프론트엔드 state 업데이트
+        setMembers(members.map(m =>
+          m.id === memberId ? { ...m, status: newStatus } : m
+        ))
+        alert(`학원 상태가 "${statusText[newStatus]}"(으)로 변경되었습니다.`)
+      }
+    } catch (err) {
+      console.error('상태 변경 실패:', err)
+      alert('상태 변경에 실패했습니다.')
+    }
+  }
+
+  const handleDeleteMember = async (member) => {
+    if (!window.confirm(`정말로 "${member.academyName}" 학원을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+      return
+    }
+
+    try {
+      const response = await tenantService.deleteTenant(member.id)
+
+      if (response.success) {
+        alert('학원이 삭제되었습니다.')
+        await fetchTenants() // 목록 새로고침
+      }
+    } catch (err) {
+      console.error('학원 삭제 실패:', err)
+      alert('학원 삭제에 실패했습니다.')
+    }
   }
 
   const handleFormChange = (field, value) => {
+    // 전화번호와 사업자번호는 자동 포맷팅 적용
+    let formattedValue = value
+
+    if (field === 'phone') {
+      formattedValue = formatPhoneNumber(value)
+    } else if (field === 'businessNumber') {
+      formattedValue = formatBusinessNumber(value)
+    }
+
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: formattedValue
     }))
   }
 
@@ -320,6 +391,13 @@ const MembershipPage = () => {
       <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
         가입 현황 관리
       </Typography>
+
+      {/* 에러 메시지 */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {/* 통계 카드 */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -346,9 +424,9 @@ const MembershipPage = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="warning.main">체험 중</Typography>
+              <Typography variant="h6" color="warning.main">비활성</Typography>
               <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                {members.filter(m => m.status === 'trial').length}
+                {members.filter(m => m.status === 'inactive').length}
               </Typography>
             </CardContent>
           </Card>
@@ -356,9 +434,9 @@ const MembershipPage = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="error.main">만료</Typography>
+              <Typography variant="h6" color="error.main">정지</Typography>
               <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
-                {members.filter(m => m.status === 'expired').length}
+                {members.filter(m => m.status === 'suspended').length}
               </Typography>
             </CardContent>
           </Card>
@@ -390,19 +468,18 @@ const MembershipPage = () => {
                 >
                   <MenuItem value="all">전체</MenuItem>
                   <MenuItem value="active">정상</MenuItem>
-                  <MenuItem value="trial">체험</MenuItem>
-                  <MenuItem value="expired">만료</MenuItem>
+                  <MenuItem value="inactive">비활성</MenuItem>
+                  <MenuItem value="suspended">정지</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
             <Grid item xs={12} md={3}>
               <Button
                 fullWidth
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleAddNewMember}
+                variant="outlined"
+                onClick={() => fetchTenants()}
               >
-                신규 학원 등록
+                새로고침
               </Button>
             </Grid>
           </Grid>
@@ -489,7 +566,11 @@ const MembershipPage = () => {
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="삭제">
-                          <IconButton size="small" color="error">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteMember(member)}
+                          >
                             <DeleteIcon />
                           </IconButton>
                         </Tooltip>
@@ -574,8 +655,9 @@ const MembershipPage = () => {
                   disabled={!isEditMode && !!selectedMember}
                 >
                   <MenuItem value="active">정상</MenuItem>
+                  <MenuItem value="inactive">비활성</MenuItem>
+                  <MenuItem value="suspended">정지</MenuItem>
                   <MenuItem value="trial">체험</MenuItem>
-                  <MenuItem value="expired">만료</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -653,13 +735,8 @@ const MembershipPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>
-            {isEditMode || !selectedMember ? '취소' : '닫기'}
+            {isEditMode ? '취소' : '닫기'}
           </Button>
-          {!selectedMember && (
-            <Button variant="contained" onClick={handleSave}>
-              등록
-            </Button>
-          )}
           {selectedMember && !isEditMode && (
             <Button
               variant="contained"

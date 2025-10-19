@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react'
+import React, { useState, useContext, useEffect } from 'react'
 import { AuthContext } from '../../contexts/AuthContext'
 import {
   Box,
@@ -21,27 +21,35 @@ import {
   Lock as LockIcon,
   Refresh as RefreshIcon,
   Launch as LaunchIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  DeleteForever as DeleteForeverIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../../components/common/DraggableDialog'
+import { tenantService } from '../../services/apiService'
+import { authService } from '../../services/authService'
+import { formatPhoneNumber, formatBusinessNumber, unformatPhoneNumber, unformatBusinessNumber } from '../../utils/formatters'
 
 const SettingsPage = () => {
   const { user } = useContext(AuthContext)
   const [passwordDialog, setPasswordDialog] = useState(false)
+  const [withdrawalDialog, setWithdrawalDialog] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
 
   const [settings, setSettings] = useState({
     // 학원 기본 설정
-    username: user?.username || 'admin',
-    name: '가온 학원',
-    address: '서울시 강남구 테헤란로 123',
-    email: 'admin@gaon.co.kr',
-    phone: '010-1234-5678',
+    username: user?.username || '',
+    name: '',
+    businessNumber: '',
+    ownerName: '',
+    address: '',
+    email: '',
+    phone: '',
 
     // 학습 관제 서비스 설정
     homeKey: 'GAON-2024-HOME-KEY-12345',
 
     // 문자 서비스 설정
-    smsPhone: '010-1234-5678'
+    smsPhone: ''
   })
 
   const [passwordData, setPasswordData] = useState({
@@ -50,13 +58,59 @@ const SettingsPage = () => {
     confirmPassword: ''
   })
 
+  const [withdrawalPassword, setWithdrawalPassword] = useState('')
+
   const [loading, setLoading] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
 
+  // 학원 정보 로드
+  useEffect(() => {
+    const loadTenantInfo = async () => {
+      try {
+        setInitialLoading(true)
+        const response = await tenantService.getMyTenant()
+
+        if (response.success) {
+          const tenant = response.data
+          setSettings({
+            username: user?.username || '',
+            name: tenant.academyName || '',
+            businessNumber: formatBusinessNumber(tenant.businessNumber || ''),
+            ownerName: tenant.ownerName || '',
+            address: tenant.address || '',
+            email: tenant.email || user?.email || '',
+            phone: formatPhoneNumber(tenant.phone || ''),
+            homeKey: 'GAON-2024-HOME-KEY-12345',
+            smsPhone: formatPhoneNumber(tenant.phone || '')
+          })
+        }
+      } catch (error) {
+        console.error('학원 정보 로드 실패:', error)
+        setSaveMessage('학원 정보를 불러오는데 실패했습니다.')
+      } finally {
+        setInitialLoading(false)
+      }
+    }
+
+    loadTenantInfo()
+  }, [user])
+
   const handleSettingChange = (field) => (event) => {
+    let value = event.target.value
+
+    // 전화번호 자동 포맷팅
+    if (field === 'phone' || field === 'smsPhone') {
+      value = formatPhoneNumber(value)
+    }
+
+    // 사업자번호 자동 포맷팅
+    if (field === 'businessNumber') {
+      value = formatBusinessNumber(value)
+    }
+
     setSettings(prev => ({
       ...prev,
-      [field]: event.target.value
+      [field]: value
     }))
   }
 
@@ -70,14 +124,26 @@ const SettingsPage = () => {
   const handleSave = async () => {
     setLoading(true)
     try {
-      // API 호출 로직
-      console.log('설정 저장:', settings)
+      // API 요청 데이터 준비 (하이픈 제거)
+      const tenantData = {
+        name: settings.name,
+        businessNumber: settings.businessNumber ? unformatBusinessNumber(settings.businessNumber) : null,
+        ownerName: settings.ownerName,
+        phone: unformatPhoneNumber(settings.phone),
+        email: settings.email,
+        address: settings.address
+      }
 
-      // 임시 지연
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      console.log('설정 저장 API 호출:', tenantData)
 
-      setSaveMessage('설정이 성공적으로 저장되었습니다.')
-      setTimeout(() => setSaveMessage(''), 3000)
+      const response = await tenantService.updateMyTenant(tenantData)
+
+      if (response.success) {
+        setSaveMessage('설정이 성공적으로 저장되었습니다.')
+        setTimeout(() => setSaveMessage(''), 3000)
+      } else {
+        setSaveMessage('설정 저장에 실패했습니다.')
+      }
     } catch (error) {
       console.error('설정 저장 실패:', error)
       setSaveMessage('설정 저장에 실패했습니다.')
@@ -135,6 +201,48 @@ const SettingsPage = () => {
     alert('상품 변경 기능은 고객센터로 문의해주세요.')
   }
 
+  const handleWithdrawal = () => {
+    setWithdrawalDialog(true)
+  }
+
+  const handleWithdrawalConfirm = async () => {
+    if (!withdrawalPassword) {
+      alert('비밀번호를 입력해주세요.')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const response = await tenantService.deleteMyTenant(withdrawalPassword)
+
+      if (response.success) {
+        alert('탈퇴가 완료되었습니다. 그동안 이용해주셔서 감사합니다.')
+        // 로그아웃 처리
+        authService.removeTokens()
+        window.location.href = '/'
+      }
+    } catch (error) {
+      console.error('탈퇴 실패:', error)
+      const errorMessage = error.response?.data?.error || '탈퇴 처리 중 오류가 발생했습니다.'
+      alert(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleWithdrawalCancel = () => {
+    setWithdrawalDialog(false)
+    setWithdrawalPassword('')
+  }
+
+  if (initialLoading) {
+    return (
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography>설정 정보를 불러오는 중...</Typography>
+      </Box>
+    )
+  }
+
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
@@ -176,13 +284,42 @@ const SettingsPage = () => {
                     }}
                   />
                 </Grid>
-                <Grid item xs={12}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="학원명 *"
                     value={settings.name}
                     onChange={handleSettingChange('name')}
                     required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="대표자명"
+                    value={settings.ownerName}
+                    onChange={handleSettingChange('ownerName')}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="사업자등록번호"
+                    value={settings.businessNumber}
+                    onChange={handleSettingChange('businessNumber')}
+                    helperText="숫자만 입력하면 자동으로 포맷팅됩니다"
+                    placeholder="373-66-00087"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="전화번호 *"
+                    value={settings.phone}
+                    onChange={handleSettingChange('phone')}
+                    required
+                    helperText="숫자만 입력하면 자동으로 포맷팅됩니다"
+                    placeholder="010-9944-0180"
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -192,7 +329,7 @@ const SettingsPage = () => {
                     value={settings.address}
                     onChange={handleSettingChange('address')}
                     required
-                    helperText="대략적인 주소를 입력해 주세요."
+                    helperText="학원의 주소를 입력해 주세요"
                   />
                 </Grid>
                 <Grid item xs={12}>
@@ -203,20 +340,7 @@ const SettingsPage = () => {
                     value={settings.email}
                     onChange={handleSettingChange('email')}
                     required
-                    helperText="비밀번호 분실 시 등에 이용됩니다."
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="전화번호 *"
-                    value={settings.phone}
-                    onChange={handleSettingChange('phone')}
-                    required
-                    helperText="시스템에서 발송되는 문자 메시지를 수신할 번호입니다. 비밀번호 분실 시 등에 이용됩니다."
-                    inputProps={{
-                      pattern: '^\\d{3}-\\d{3,4}-\\d{4}$'
-                    }}
+                    helperText="비밀번호 분실 시 등에 이용됩니다"
                   />
                 </Grid>
               </Grid>
@@ -582,30 +706,48 @@ const SettingsPage = () => {
 
         {/* 액션 버튼들 */}
         <Grid item xs={12}>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={handleProductChange}
-            >
-              상품 변경
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<LockIcon />}
-              onClick={() => setPasswordDialog(true)}
-            >
-              비밀번호 변경
-            </Button>
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<SaveIcon />}
-              onClick={handleSave}
-              disabled={loading}
-            >
-              {loading ? '저장 중...' : '설정 저장'}
-            </Button>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mt: 2 }}>
+            {/* 왼쪽: 탈퇴 버튼 (슈퍼관리자 제외) */}
+            <Box>
+              {user?.role !== 'superadmin' && (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<DeleteForeverIcon />}
+                  onClick={handleWithdrawal}
+                  disabled={loading}
+                >
+                  탈퇴하기
+                </Button>
+              )}
+            </Box>
+
+            {/* 오른쪽: 기타 버튼들 */}
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={handleProductChange}
+              >
+                상품 변경
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<LockIcon />}
+                onClick={() => setPasswordDialog(true)}
+              >
+                비밀번호 변경
+              </Button>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<SaveIcon />}
+                onClick={handleSave}
+                disabled={loading}
+              >
+                {loading ? '저장 중...' : '설정 저장'}
+              </Button>
+            </Box>
           </Box>
         </Grid>
       </Grid>
@@ -684,6 +826,68 @@ const SettingsPage = () => {
             disabled={loading || !passwordData.currentPassword || !passwordData.newPassword || passwordData.newPassword !== passwordData.confirmPassword}
           >
             {loading ? '변경 중...' : '변경'}
+          </Button>
+        </DialogActions>
+      </DraggableDialog>
+
+      {/* 탈퇴 확인 다이얼로그 */}
+      <DraggableDialog
+        open={withdrawalDialog}
+        onClose={(event, reason) => {
+          if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+            handleWithdrawalCancel()
+          }
+        }}
+        disableEscapeKeyDown
+        maxWidth="sm"
+        fullWidth
+        title={
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" sx={{ color: 'error.main' }}>
+              <DeleteForeverIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+              학원 탈퇴
+            </Typography>
+            <IconButton onClick={handleWithdrawalCancel}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        }
+      >
+        <DialogContent>
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              ⚠️ 탈퇴 시 다음 사항이 적용됩니다:
+            </Typography>
+            <Typography variant="body2" component="ul" sx={{ pl: 2, mb: 0 }}>
+              <li>모든 학원 데이터가 삭제됩니다</li>
+              <li>학생, 강사, 출석 기록 등 모든 정보가 사라집니다</li>
+              <li>이 작업은 되돌릴 수 없습니다</li>
+            </Typography>
+          </Alert>
+
+          <TextField
+            fullWidth
+            label="비밀번호 확인"
+            type="password"
+            value={withdrawalPassword}
+            onChange={(e) => setWithdrawalPassword(e.target.value)}
+            placeholder="비밀번호를 입력하여 본인 확인을 해주세요"
+            helperText="탈퇴를 진행하려면 현재 비밀번호를 입력해주세요"
+            required
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleWithdrawalCancel}>
+            취소
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleWithdrawalConfirm}
+            disabled={loading || !withdrawalPassword}
+          >
+            {loading ? '처리 중...' : '탈퇴하기'}
           </Button>
         </DialogActions>
       </DraggableDialog>

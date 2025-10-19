@@ -57,20 +57,24 @@ const HomePage = () => {
 
     setLoginError('')
 
-    try {
-      const result = await login({
-        username: loginData.username,
-        password: loginData.password
-      })
+    const result = await login({
+      username: loginData.username,
+      password: loginData.password
+    })
 
-      if (result.success) {
-        setLoginDialogOpen(false)
-        navigate('/dashboard')
-      } else {
-        setLoginError(result.message || '로그인에 실패했습니다.')
+    if (result.success) {
+      setLoginDialogOpen(false)
+      navigate('/dashboard')
+    } else {
+      // 에러 메시지 설정
+      setLoginError(result.message || '로그인에 실패했습니다.')
+
+      // 중요한 에러는 alert도 표시
+      if (result.errorCode === 'ACCOUNT_DISABLED') {
+        alert('탈퇴했거나 비활성화된 계정입니다. 관리자에게 문의하세요.')
+      } else if (result.errorCode === 'INVALID_CREDENTIALS') {
+        alert('가입 이력이 없는 계정입니다. 회원가입을 먼저 진행해주세요.')
       }
-    } catch (error) {
-      setLoginError('로그인 중 오류가 발생했습니다.')
     }
   }
 

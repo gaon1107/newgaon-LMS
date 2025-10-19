@@ -196,6 +196,17 @@ const getCurrentUser = async (req, res) => {
 
     const userInfo = users[0];
 
+    // 계정 활성화 상태 확인
+    if (!userInfo.is_active) {
+      return res.status(401).json({
+        Success: false,
+        Error: '비활성화된 계정입니다. 탈퇴했거나 정지된 계정입니다.',
+        Message: 'ACCOUNT_DISABLED',
+        success: false,
+        error: '비활성화된 계정입니다.'
+      });
+    }
+
     // 라이선스 정보 조회 (remaining_days는 SQL에서 계산)
     const licenses = await query(
       `SELECT 

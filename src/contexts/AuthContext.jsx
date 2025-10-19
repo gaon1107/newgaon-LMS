@@ -25,7 +25,20 @@ export const AuthProvider = ({ children }) => {
       setUser(userData)
     } catch (error) {
       console.error('인증 상태 확인 실패:', error)
-      authService.removeTokens()
+
+      // 401 에러 (비활성 계정 등)인 경우 토큰 제거하고 로그아웃
+      if (error.response?.status === 401) {
+        authService.removeTokens()
+        setUser(null)
+
+        // 비활성 계정 메시지 표시
+        if (error.response?.data?.Message === 'ACCOUNT_DISABLED') {
+          alert('탈퇴했거나 비활성화된 계정입니다.')
+        }
+      } else {
+        // 다른 에러는 토큰만 제거
+        authService.removeTokens()
+      }
     } finally {
       setIsLoading(false)
     }
@@ -56,9 +69,31 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      // 백엔드에서 반환된 에러 처리
+      const errorCode = error.response?.data?.Message
+      const errorMessage = error.response?.data?.Error
+
+      // 비활성화된 계정
+      if (errorCode === 'ACCOUNT_DISABLED') {
+        return {
+          success: false,
+          message: '탈퇴했거나 비활성화된 계정입니다. 관리자에게 문의하세요.',
+          errorCode: 'ACCOUNT_DISABLED'
+        }
+      }
+
+      // 잘못된 로그인 정보
+      if (errorCode === 'INVALID_CREDENTIALS') {
+        return {
+          success: false,
+          message: '가입 되지 않은 아이디 또는 계정입니다.',
+          errorCode: 'INVALID_CREDENTIALS'
+        }
+      }
+
       return {
         success: false,
-        message: error.response?.data?.message || '로그인에 실패했습니다.'
+        message: errorMessage || error.response?.data?.message || '로그인에 실패했습니다.'
       }
     } finally {
       setIsLoading(false)
