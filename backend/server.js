@@ -84,6 +84,8 @@ app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/payments', require('./routes/payments'));
+app.use('/api/tenants', require('./routes/tenants')); // 슈퍼관리자용 학원 관리
 // app.use('/api/announcements', require('./routes/announcements')); // 추후 구현 예정
 
 // 모바일 출결 API
@@ -162,4 +164,4 @@ process.on('SIGINT', () => {
 
 startServer();
 
-module.exports = app;
+module.exports = app; 

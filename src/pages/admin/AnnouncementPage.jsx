@@ -263,40 +263,84 @@ const AnnouncementPage = () => {
       {/* 통계 카드 */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="primary">전체 공지</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(102, 126, 234, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>전체 공지</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {announcements.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="success.main">활성</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(245, 87, 108, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(245, 87, 108, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>활성</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {announcements.filter(a => a.isActive).length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="error.main">중요</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(79, 172, 254, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(79, 172, 254, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>중요</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {announcements.filter(a => a.priority === 'high').length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="text.secondary">총 조회수</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(250, 112, 154, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(250, 112, 154, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>총 조회수</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {announcements.reduce((sum, a) => sum + a.viewCount, 0)}
               </Typography>
             </CardContent>
@@ -339,6 +383,21 @@ const AnnouncementPage = () => {
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={() => handleOpenDialog(null, true)}
+                sx={{
+                  background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                  boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  padding: '12px 24px',
+                  fontSize: '1rem',
+                  textTransform: 'none',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: '0 6px 25px rgba(25, 118, 210, 0.4)',
+                    transform: 'translateY(-2px)',
+                    background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)'
+                  }
+                }}
               >
                 새 공지사항
               </Button>
@@ -435,7 +494,11 @@ const AnnouncementPage = () => {
         fullWidth
         title={editMode ? (selectedAnnouncement ? '공지사항 수정' : '새 공지사항 작성') : '공지사항 상세'}
       >
-        <DialogContent>
+        <DialogContent sx={{ 
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          padding: '24px',
+          borderRadius: '0 0 12px 12px'
+        }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <TextField
@@ -596,12 +659,40 @@ const AnnouncementPage = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>
+        <DialogActions sx={{
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          padding: '16px 24px',
+          borderTop: '1px solid #e0e0e0',
+          borderRadius: '0 0 12px 12px',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 1
+        }}>
+          <Button 
+            onClick={handleCloseDialog}
+            sx={{
+              color: '#666',
+              '&:hover': {
+                backgroundColor: '#e0e0e0'
+              }
+            }}
+          >
             {editMode ? '취소' : '닫기'}
           </Button>
           {editMode && (
-            <Button variant="contained" onClick={handleSave}>
+            <Button 
+              variant="contained" 
+              onClick={handleSave}
+              sx={{
+                background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
+                '&:hover': {
+                  boxShadow: '0 6px 20px rgba(25, 118, 210, 0.4)',
+                  transform: 'translateY(-2px)',
+                  transition: 'all 0.3s ease'
+                }
+              }}
+            >
               저장
             </Button>
           )}

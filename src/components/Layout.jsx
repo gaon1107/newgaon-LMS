@@ -94,8 +94,7 @@ const Layout = ({ children }) => {
       submenu: [
         { text: '설정 관리', icon: <SettingsIcon />, path: '/account/settings' },
         { text: '라이선스 관리', icon: <LicenseIcon />, path: '/account/license' },
-        { text: '결제 관리', icon: <PaymentIcon />, path: '/account/payment' },
-        { text: '개인정보 변경', icon: <PersonIcon />, path: '/account/profile' }
+        { text: '결제 관리', icon: <PaymentIcon />, path: '/account/payment' }
       ]
     }
   ]

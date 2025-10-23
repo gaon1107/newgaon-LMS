@@ -4,6 +4,7 @@ import { AuthContext } from './contexts/AuthContext'
 import { LMSProvider } from './contexts/LMSContext'
 import { AttendanceProvider } from './contexts/AttendanceContext'
 import { AnnouncementProvider } from './contexts/AnnouncementContext'
+import { DashboardProvider } from './contexts/DashboardContext'
 import HomePage from './pages/HomePage'
 import RegisterPage from './pages/RegisterPage'
 import PasswordResetPage from './pages/PasswordResetPage'
@@ -20,7 +21,7 @@ import StudentStudyPage from './pages/study/StudentStudyPage'
 import SettingsPage from './pages/account/SettingsPage'
 import LicensePage from './pages/account/LicensePage'
 import PaymentPage from './pages/account/PaymentPage'
-import ProfilePage from './pages/account/ProfilePage'
+
 import MembershipPage from './pages/admin/MembershipPage'
 import AnnouncementPage from './pages/admin/AnnouncementPage'
 import Layout from './components/Layout'
@@ -44,7 +45,7 @@ function AppContent() {
     '/account/settings',
     '/account/license',
     '/account/payment',
-    '/account/profile',
+
     '/admin/membership',
     '/admin/announcements'
   ]
@@ -73,9 +74,10 @@ function AppContent() {
   }
 
   return (
-    <AnnouncementProvider>
-      <LMSProvider>
-        <AttendanceProvider>
+    <DashboardProvider>
+      <AnnouncementProvider>
+        <LMSProvider>
+          <AttendanceProvider>
           <Routes>
         {/* 공개 페이지들 (센차와 동일한 구조) */}
         <Route path="/" element={<HomePage />} />
@@ -148,11 +150,7 @@ function AppContent() {
             <PaymentPage />
           </Layout>
         } />
-        <Route path="/account/profile" element={
-          <Layout>
-            <ProfilePage />
-          </Layout>
-        } />
+
 
         {/* 슈퍼관리자 전용 페이지들 */}
         <Route path="/admin/membership" element={
@@ -166,9 +164,10 @@ function AppContent() {
           </Layout>
         } />
           </Routes>
-        </AttendanceProvider>
-      </LMSProvider>
-    </AnnouncementProvider>
+          </AttendanceProvider>
+        </LMSProvider>
+      </AnnouncementProvider>
+    </DashboardProvider>
   )
 }
 

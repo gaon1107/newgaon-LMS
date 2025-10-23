@@ -201,7 +201,7 @@ class LectureController {
         });
       }
 
-      const updatedLecture = await LectureModel.updateLecture(id, lectureData);
+      const updatedLecture = await LectureModel.updateLecture(id, lectureData, tenantId);
 
       res.json({
         success: true,

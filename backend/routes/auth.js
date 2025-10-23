@@ -1,5 +1,5 @@
 const express = require('express');
-const { login, refreshToken, getCurrentUser, registerAcademy } = require('../controllers/authController');
+const { login, refreshToken, getCurrentUser, registerAcademy, changePassword } = require('../controllers/authController');
 const { authenticateToken } = require('../middlewares/auth');
 
 const router = express.Router();
@@ -32,5 +32,13 @@ router.post('/refresh', refreshToken);
  * @access  Private (JWT 토큰 필요)
  */
 router.get('/user', authenticateToken, getCurrentUser);
+
+/**
+ * @route   POST /api/auth/change-password
+ * @desc    비밀번호 변경
+ * @access  Private (JWT 토큰 필요)
+ * @body    currentPassword, newPassword
+ */
+router.post('/change-password', authenticateToken, changePassword);
 
 module.exports = router;

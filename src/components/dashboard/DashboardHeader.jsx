@@ -1,22 +1,30 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useContext, useMemo } from 'react'
 import {
   Box,
   Typography,
   Card,
   CardContent,
   Grid,
-  Chip
+  Chip,
+  IconButton
 } from '@mui/material'
 import {
   School as SchoolIcon,
   Sms as SmsIcon,
-  AccessTime as TimeIcon
+  AccessTime as TimeIcon,
+  Refresh as RefreshIcon
 } from '@mui/icons-material'
 import { useAttendance } from '../../contexts/AttendanceContext'
+import { DashboardContext } from '../../contexts/DashboardContext'
+import { tenantService } from '../../services/apiService'
 
 const DashboardHeader = ({ user }) => {
   const [currentTime, setCurrentTime] = useState(new Date())
   const { students } = useAttendance()
+  const [tenantData, setTenantData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const { refreshSignal } = useContext(DashboardContext)
+  const [lastRefreshSignal, setLastRefreshSignal] = useState(0)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -26,12 +34,64 @@ const DashboardHeader = ({ user }) => {
     return () => clearInterval(timer)
   }, [])
 
+  // 학원 정보 API 호출
+  // refreshSignal이 변경되면 자동으로 갱신
+  useEffect(() => {
+    // refreshSignal이 실제로 변경되었을 때만 호출
+    if (refreshSignal !== lastRefreshSignal) {
+      console.log('🔄 [DashboardHeader] 대시보드 데이터 갱신 신호 수신')
+      setLastRefreshSignal(refreshSignal)
+      fetchTenantData()
+    }
+  }, [refreshSignal, lastRefreshSignal])
+
+  // 컴포넌트 초기 로드 시 1회만 호출
+  useEffect(() => {
+    console.log('🎯 [DashboardHeader] 대시보드 초기 로드')
+    fetchTenantData()
+  }, []) // 빈 배열 = 초기 로드 시만 실행
+
+  const fetchTenantData = async () => {
+    try {
+      setLoading(true)
+      
+      const result = await tenantService.getMyTenant()
+      
+      if (result.success) {
+        console.log('✅ [DashboardHeader] 학원 정보 로드 완료:', result.data.academyName)
+        setTenantData(result.data)
+      } else {
+        console.error('❌ [DashboardHeader] API 응답 실패:', result.error)
+      }
+    } catch (error) {
+      console.error('❌ [DashboardHeader] 학원 정보 조회 실패:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 라이선스 남은 날짜 계산 (tenantData 변경 시에만 재계산)
+  const licenseRemainDays = useMemo(() => {
+    if (!tenantData?.subscriptionEndDate) {
+      return 0
+    }
+
+    const endDate = new Date(tenantData.subscriptionEndDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const diffTime = endDate - today
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    
+    return Math.max(0, diffDays)
+  }, [tenantData?.subscriptionEndDate])
+
   // 실제 데이터 계산
   const stats = {
     innerStudents: students.filter(s => s.status === 'present' || s.status === 'late').length,
     totalStudents: students.length,
-    smsBalance: 15420, // TODO: API에서 가져오기
-    licenseRemainDays: 45 // TODO: API에서 가져오기
+    smsBalance: tenantData?.smsBalance || 0,
+    licenseRemainDays
   }
 
   const formatTime = (date) => {
@@ -54,11 +114,18 @@ const DashboardHeader = ({ user }) => {
       }}
     >
       <CardContent sx={{ p: 4 }}>
-        {/* 사용자 환영 메시지 */}
-        <Box sx={{ mb: 3 }}>
+        {/* 사용자 환영 메시지 및 새로고침 버튼 */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" sx={{ fontWeight: 300 }}>
             안녕하세요, {user?.name || '관리자'}님
           </Typography>
+          <IconButton 
+            onClick={fetchTenantData}
+            sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' } }}
+            title="데이터 새로고침"
+          >
+            <RefreshIcon />
+          </IconButton>
         </Box>
 
         {/* 통계 정보 */}
@@ -125,7 +192,7 @@ const DashboardHeader = ({ user }) => {
                 <Chip
                   label={`라이선스 ${stats.licenseRemainDays}일 남음`}
                   sx={{
-                    backgroundColor: stats.licenseRemainDays > 30 ? 'rgba(76, 175, 80, 0.8)' : 'rgba(255, 152, 0, 0.8)',
+                    backgroundColor: stats.licenseRemainDays > 30 ? 'rgba(76, 175, 80, 0.8)' : stats.licenseRemainDays > 7 ? 'rgba(255, 152, 0, 0.8)' : 'rgba(244, 67, 54, 0.8)',
                     color: 'white',
                     mb: 1
                   }}

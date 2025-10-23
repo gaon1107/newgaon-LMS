@@ -25,6 +25,7 @@ import {
   Info as InfoIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../../components/common/DraggableDialog'
+import { paymentService } from '../../services/apiService'
 
 const PaymentPage = () => {
   const [selectedProduct, setSelectedProduct] = useState('')
@@ -34,6 +35,28 @@ const PaymentPage = () => {
   const [isPromotionApplied, setIsPromotionApplied] = useState(false)
   const [paymentDialog, setPaymentDialog] = useState(false)
   const [paymentHistory, setPaymentHistory] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  // 결제 내역 불러오기
+  useEffect(() => {
+    loadPaymentHistory()
+  }, [])
+
+  const loadPaymentHistory = async () => {
+    try {
+      setLoading(true)
+      const response = await paymentService.getPayments(1, 100) // 최대 100개 조회
+      if (response.success && response.data?.payments) {
+        setPaymentHistory(response.data.payments)
+        console.log('✅ 결제 내역 로드 성공:', response.data.payments.length, '개')
+      }
+    } catch (error) {
+      console.error('❌ 결제 내역 로드 실패:', error)
+      // 에러 발생 시 빈 배열 유지
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // 상품 정의
   const products = [
@@ -162,32 +185,61 @@ const PaymentPage = () => {
     setPaymentDialog(true)
   }
 
-  const processPayment = () => {
-    // 실제 결제 처리 로직
-    const product = products.find(p => p.id === selectedProduct)
-    const term = terms.find(t => t.id === selectedTerm)
-    const method = paymentMethods.find(m => m.id === selectedMethod)
+  const processPayment = async () => {
+    try {
+      setLoading(true)
 
-    const newPayment = {
-      id: Date.now(),
-      product: product.name,
-      term: term.name,
-      method: method.name,
-      amount: price.total,
-      date: new Date().toISOString().split('T')[0],
-      status: 'completed'
+      // 실제 결제 처리 로직
+      const product = products.find(p => p.id === selectedProduct)
+      const term = terms.find(t => t.id === selectedTerm)
+      const method = paymentMethods.find(m => m.id === selectedMethod)
+
+      const paymentData = {
+        productId: product.id,
+        productName: product.name,
+        termMonths: term.months,
+        termName: term.name,
+        paymentMethod: method.name,
+        originalAmount: price.originalPrice,
+        discountAmount: price.discount || 0,
+        subtotalAmount: price.subtotal,
+        taxAmount: price.tax,
+        totalAmount: price.total,
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentStatus: 'completed',
+        promotionCode: isPromotionApplied ? promotionCode : null,
+        notes: null
+      }
+
+      console.log('📝 결제 데이터 전송:', paymentData)
+
+      // API를 통해 결제 저장
+      const response = await paymentService.createPayment(paymentData)
+
+      if (response.success) {
+        console.log('✅ 결제 저장 성공:', response.data)
+
+        // 결제 내역 다시 로드
+        await loadPaymentHistory()
+
+        setPaymentDialog(false)
+
+        // 폼 초기화
+        setSelectedProduct('')
+        setSelectedTerm('')
+        setPromotionCode('')
+        setIsPromotionApplied(false)
+
+        alert('결제가 완료되었습니다!')
+      } else {
+        throw new Error(response.error?.message || '결제 처리 실패')
+      }
+    } catch (error) {
+      console.error('❌ 결제 처리 실패:', error)
+      alert(`결제 처리 중 오류가 발생했습니다: ${error.message}`)
+    } finally {
+      setLoading(false)
     }
-
-    setPaymentHistory(prev => [newPayment, ...prev])
-    setPaymentDialog(false)
-
-    // 폼 초기화
-    setSelectedProduct('')
-    setSelectedTerm('')
-    setPromotionCode('')
-    setIsPromotionApplied(false)
-
-    alert('결제가 완료되었습니다!')
   }
 
   return (
@@ -434,7 +486,15 @@ const PaymentPage = () => {
         {/* 오른쪽: 결제 안내 및 이전 결제 내역 */}
         <Grid item xs={12} md={4}>
           {/* 최근 결제 내역 */}
-          {paymentHistory.length > 0 && (
+          {loading ? (
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  결제 내역을 불러오는 중...
+                </Typography>
+              </CardContent>
+            </Card>
+          ) : paymentHistory.length > 0 && (
             <Card sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
@@ -443,13 +503,13 @@ const PaymentPage = () => {
                 {paymentHistory.slice(0, 3).map((payment) => (
                   <Box key={payment.id} sx={{ mb: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
                     <Typography variant="body2" fontWeight="bold">
-                      {payment.product} {payment.term}
+                      {payment.product_name} {payment.term_name}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      [{payment.method}] {payment.amount.toLocaleString()}원
+                      [{payment.payment_method}] {payment.total_amount?.toLocaleString()}원
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {payment.date} 결제 완료
+                      {payment.payment_date} 결제 완료
                     </Typography>
                   </Box>
                 ))}

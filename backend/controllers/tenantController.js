@@ -48,11 +48,14 @@ const getAllTenants = async (req, res) => {
           [tenant.id]
         );
 
+        console.log(`🔍 [학원 ${tenant.academyName}] 관리자 정보:`, admins);
+
         return {
           ...tenant,
           adminName: admins.length > 0 ? admins[0].name : null,
           adminUsername: admins.length > 0 ? admins[0].username : null,
-          adminEmail: admins.length > 0 ? admins[0].email : null
+          adminEmail: admins.length > 0 ? admins[0].email : null,
+          adminId: admins.length > 0 ? admins[0].username : null // 등록한 아이디
         };
       })
     );

@@ -8,26 +8,22 @@ class LectureModel {
       let whereClauses = ['l.is_active = true'];
       let queryParams = [];
 
-      // ✅ tenant_id 필터링
       if (tenantId) {
         whereClauses.push('l.tenant_id = ?');
         queryParams.push(tenantId);
       }
 
-      // 검색 조건
       if (search) {
         whereClauses.push('(l.name LIKE ? OR l.subject LIKE ? OR l.description LIKE ?)');
         const searchPattern = `%${search}%`;
         queryParams.push(searchPattern, searchPattern, searchPattern);
       }
 
-      // 강사 필터
       if (instructorId) {
         whereClauses.push('l.instructor_id = ?');
         queryParams.push(instructorId);
       }
 
-      // 상태 필터
       if (status) {
         whereClauses.push('l.status = ?');
         queryParams.push(status);
@@ -35,7 +31,6 @@ class LectureModel {
 
       const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-      // 총 개수 조회
       const countQuery = `
         SELECT COUNT(*) as total
         FROM lectures l
@@ -44,20 +39,23 @@ class LectureModel {
       const [countResult] = await query(countQuery, queryParams);
       const total = countResult.total;
 
-      // 강의 목록 조회 (강사 및 학생 정보 포함)
       const lecturesQuery = `
         SELECT
           l.*,
-          i.name as instructor_name,
-          i.id as instructor_id,
           COUNT(DISTINCT sl.student_id) as current_students,
+          GROUP_CONCAT(
+            DISTINCT CONCAT(i.id, ':', i.name)
+            ORDER BY i.name
+            SEPARATOR '|'
+          ) as instructor_info,
           GROUP_CONCAT(
             DISTINCT CONCAT(s.id, ':', s.name)
             ORDER BY s.name
             SEPARATOR '|'
           ) as student_info
         FROM lectures l
-        LEFT JOIN instructors i ON l.instructor_id = i.id AND i.is_active = true
+        LEFT JOIN instructor_lectures il ON l.id = il.lecture_id AND il.is_active = true AND il.tenant_id = l.tenant_id
+        LEFT JOIN instructors i ON il.instructor_id = i.id AND i.is_active = true
         LEFT JOIN student_lectures sl ON l.id = sl.lecture_id AND sl.is_active = true
         LEFT JOIN students s ON sl.student_id = s.id AND s.is_active = true
         ${whereClause}
@@ -68,9 +66,20 @@ class LectureModel {
 
       const lectures = await query(lecturesQuery, queryParams);
 
-      // 학생 정보 파싱
       const processedLectures = lectures.map(lecture => {
         const students = [];
+        const instructors = [];
+
+        // ✅ 복수 강사 처리
+        if (lecture.instructor_info) {
+          const instructorInfos = lecture.instructor_info.split('|');
+          instructorInfos.forEach(info => {
+            const [id, name] = info.split(':');
+            if (id && name) {
+              instructors.push({ id: parseInt(id), name });
+            }
+          });
+        }
 
         if (lecture.student_info) {
           const studentInfos = lecture.student_info.split('|');
@@ -82,10 +91,13 @@ class LectureModel {
 
         return {
           ...lecture,
-          instructor: lecture.instructor_name || '미배정',
+          instructor: instructors.length > 0 ? instructors.map(i => i.name).join(', ') : '미배정',
+          instructorIds: instructors.map(i => i.id),
+          instructors: instructors,
           enrolledStudents: students.map(s => s.id),
           students: students.map(s => s.name).join(', ') || '등록된 학생 없음',
-          student_info: undefined // 임시 필드 제거
+          instructor_info: undefined,
+          student_info: undefined
         };
       });
 
@@ -110,24 +122,28 @@ class LectureModel {
       let whereClauses = ['l.id = ?', 'l.is_active = true'];
       let params = [id];
 
-      // ✅ tenant_id 필터링
       if (tenantId) {
         whereClauses.push('l.tenant_id = ?');
         params.push(tenantId);
       }
+
       const lectureQuery = `
         SELECT
           l.*,
-          i.name as instructor_name,
-          i.id as instructor_id,
           COUNT(DISTINCT sl.student_id) as current_students,
+          GROUP_CONCAT(
+            DISTINCT CONCAT(i.id, ':', i.name)
+            ORDER BY i.name
+            SEPARATOR '|'
+          ) as instructor_info,
           GROUP_CONCAT(
             DISTINCT CONCAT(s.id, ':', s.name)
             ORDER BY s.name
             SEPARATOR '|'
           ) as student_info
         FROM lectures l
-        LEFT JOIN instructors i ON l.instructor_id = i.id AND i.is_active = true
+        LEFT JOIN instructor_lectures il ON l.id = il.lecture_id AND il.is_active = true AND il.tenant_id = l.tenant_id
+        LEFT JOIN instructors i ON il.instructor_id = i.id AND i.is_active = true
         LEFT JOIN student_lectures sl ON l.id = sl.lecture_id AND sl.is_active = true
         LEFT JOIN students s ON sl.student_id = s.id AND s.is_active = true
         WHERE ${whereClauses.join(' AND ')}
@@ -141,6 +157,18 @@ class LectureModel {
 
       const lecture = lectures[0];
       const students = [];
+      const instructors = [];
+
+      // ✅ 복수 강사 처리
+      if (lecture.instructor_info) {
+        const instructorInfos = lecture.instructor_info.split('|');
+        instructorInfos.forEach(info => {
+          const [id, name] = info.split(':');
+          if (id && name) {
+            instructors.push({ id: parseInt(id), name });
+          }
+        });
+      }
 
       if (lecture.student_info) {
         const studentInfos = lecture.student_info.split('|');
@@ -152,10 +180,13 @@ class LectureModel {
 
       return {
         ...lecture,
-        instructor: lecture.instructor_name || '미배정',
+        instructor: instructors.length > 0 ? instructors.map(i => i.name).join(', ') : '미배정',
+        instructorIds: instructors.map(i => i.id),
+        instructors: instructors,
         enrolledStudents: students.map(s => s.id),
         students: students.map(s => s.name).join(', ') || '등록된 학생 없음',
-        student_info: undefined // 임시 필드 제거
+        instructor_info: undefined,
+        student_info: undefined
       };
     } catch (error) {
       console.error('LectureModel.getLectureById error:', error);
@@ -169,17 +200,17 @@ class LectureModel {
       const result = await transaction(async (conn) => {
         const {
           enrolledStudents = [],
+          instructorIds = [],
           ...basicData
         } = lectureData;
 
-        // ✅ 강의 기본 정보 삽입 (tenant_id 포함, 실제 테이블 구조: id는 VARCHAR(50))
         const lectureId = basicData.id || `lecture_${Date.now()}`;
 
         const insertQuery = `
           INSERT INTO lectures (
             id, name, teacher_name, subject,
-            schedule, fee, capacity, description, tenant_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            schedule, fee, capacity, description, tenant_id, instructor_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
@@ -191,31 +222,39 @@ class LectureModel {
           basicData.fee || 0,
           basicData.capacity || basicData.maxStudents || 0,
           basicData.description || null,
-          tenantId  // ✅ tenant_id 추가
+          tenantId,
+          Array.isArray(instructorIds) && instructorIds.length > 0 
+            ? instructorIds[0] 
+            : basicData.instructorId || null
         ];
 
         await conn.execute(insertQuery, insertParams);
 
-        // 강사-강의 연결은 lectures 테이블의 instructor_id 컬럼에서 처리됨 (불필요)
-        // instructor_lectures 테이블 사용 안 함
+        // ✅ 복수 강사 저장
+        if (Array.isArray(instructorIds) && instructorIds.length > 0) {
+          for (const instructorId of instructorIds) {
+            await conn.execute(
+              'INSERT INTO instructor_lectures (tenant_id, instructor_id, lecture_id, is_active) VALUES (?, ?, ?, true)',
+              [tenantId, instructorId, lectureId]
+            );
+          }
+        }
 
         // 학생 연결
         if (enrolledStudents.length > 0) {
           for (const studentId of enrolledStudents) {
             await conn.execute(
-              'INSERT INTO student_lectures (student_id, lecture_id) VALUES (?, ?)',
-              [studentId, lectureId]
+              'INSERT INTO student_lectures (tenant_id, student_id, lecture_id) VALUES (?, ?, ?)',
+              [tenantId, studentId, lectureId]
             );
           }
 
-          // 현재 학생 수 업데이트
           await conn.execute(`
             UPDATE lectures
             SET current_students = ?
             WHERE id = ?
           `, [enrolledStudents.length, lectureId]);
 
-          // 각 학생의 총 수강료 재계산
           for (const studentId of enrolledStudents) {
             const [feeResult] = await conn.execute(`
               SELECT SUM(l.fee) as total_fee
@@ -235,8 +274,7 @@ class LectureModel {
         return lectureId;
       });
 
-      // 생성된 강의 정보 반환
-      return await this.getLectureById(result);
+      return await this.getLectureById(result, tenantId);
     } catch (error) {
       console.error('LectureModel.createLecture error:', error);
       throw error;
@@ -249,22 +287,22 @@ class LectureModel {
       const result = await transaction(async (conn) => {
         const {
           enrolledStudents = [],
+          instructorIds = [],
           ...basicData
         } = lectureData;
 
-        // ✅ tenant_id 필터링: 수정 권한 확인
         if (tenantId) {
-          const [lecture] = await conn.execute(
+          const [lectures] = await conn.execute(
             'SELECT id FROM lectures WHERE id = ? AND tenant_id = ? AND is_active = true',
             [id, tenantId]
           );
 
-          if (lecture.length === 0) {
+          if (!lectures || lectures.length === 0) {
             throw new Error('해당 강의를 찾을 수 없거나 수정 권한이 없습니다.');
           }
         }
 
-        // 강의 기본 정보 업데이트 (실제 테이블 구조에 맞춤)
+        // 강의 기본 정보 업데이트
         const updateQuery = `
           UPDATE lectures SET
             name = ?, subject = ?, description = ?, instructor_id = ?,
@@ -277,7 +315,9 @@ class LectureModel {
           basicData.name,
           basicData.subject || null,
           basicData.description || null,
-          basicData.instructorId || null,
+          Array.isArray(instructorIds) && instructorIds.length > 0 
+            ? instructorIds[0] 
+            : basicData.instructorId || null,
           basicData.teacherName || basicData.instructor || null,
           basicData.schedule || null,
           basicData.fee || 0,
@@ -287,8 +327,32 @@ class LectureModel {
 
         await conn.execute(updateQuery, updateParams);
 
-        // 강사-강의 연결은 lectures 테이블의 instructor_id 컬럼에서 처리됨 (불필요)
-        // instructor_lectures 테이블 사용 안 함
+        // ✅ 복수 강사 업데이트
+        await conn.execute(
+          'UPDATE instructor_lectures SET is_active = false WHERE lecture_id = ? AND tenant_id = ?',
+          [id, tenantId]
+        );
+
+        if (Array.isArray(instructorIds) && instructorIds.length > 0) {
+          for (const instructorId of instructorIds) {
+            const [existing] = await conn.execute(
+              'SELECT id FROM instructor_lectures WHERE instructor_id = ? AND lecture_id = ? AND tenant_id = ?',
+              [instructorId, id, tenantId]
+            );
+
+            if (existing && existing.length > 0) {
+              await conn.execute(
+                'UPDATE instructor_lectures SET is_active = true WHERE instructor_id = ? AND lecture_id = ? AND tenant_id = ?',
+                [instructorId, id, tenantId]
+              );
+            } else {
+              await conn.execute(
+                'INSERT INTO instructor_lectures (tenant_id, instructor_id, lecture_id, is_active) VALUES (?, ?, ?, true)',
+                [tenantId, instructorId, id]
+              );
+            }
+          }
+        }
 
         // 기존 학생 연결 비활성화
         const [oldStudents] = await conn.execute(
@@ -309,15 +373,15 @@ class LectureModel {
               [studentId, id]
             );
 
-            if (existing.length > 0) {
+            if (existing && existing.length > 0) {
               await conn.execute(
                 'UPDATE student_lectures SET is_active = true WHERE student_id = ? AND lecture_id = ?',
                 [studentId, id]
               );
             } else {
               await conn.execute(
-                'INSERT INTO student_lectures (student_id, lecture_id) VALUES (?, ?)',
-                [studentId, id]
+                'INSERT INTO student_lectures (tenant_id, student_id, lecture_id) VALUES (?, ?, ?)',
+                [tenantId, studentId, id]
               );
             }
           }
@@ -357,56 +421,48 @@ class LectureModel {
         return id;
       });
 
-      // 수정된 강의 정보 반환
-      return await this.getLectureById(result);
+      return await this.getLectureById(result, tenantId);
     } catch (error) {
       console.error('LectureModel.updateLecture error:', error);
       throw error;
     }
   }
 
-  // 강의 삭제 (소프트 삭제)
-  // 강의 삭제 (완전 삭제)
+  // 강의 삭제
   static async deleteLecture(id, tenantId = null) {
     try {
       await transaction(async (conn) => {
-        // ✅ tenant_id 필터링: 삭제 권한 확인
         if (tenantId) {
-          const [lecture] = await conn.execute(
+          const [lectures] = await conn.execute(
             'SELECT id FROM lectures WHERE id = ? AND tenant_id = ? AND is_active = true',
             [id, tenantId]
           );
 
-          if (lecture.length === 0) {
+          if (!lectures || lectures.length === 0) {
             throw new Error('해당 강의를 찾을 수 없거나 삭제 권한이 없습니다.');
           }
         }
 
-        // 등록된 학생들 조회 (수강료 재계산용)
         const [students] = await conn.execute(
           'SELECT student_id FROM student_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 학생-강의 연결 완전 삭제
         await conn.execute(
           'DELETE FROM student_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 강사-강의 연결 완전 삭제
         await conn.execute(
           'DELETE FROM instructor_lectures WHERE lecture_id = ?',
           [id]
         );
 
-        // 강의 완전 삭제
         await conn.execute(
           'DELETE FROM lectures WHERE id = ?',
           [id]
         );
 
-        // 영향받은 학생들의 수강료 재계산
         for (const student of students) {
           const [feeResult] = await conn.execute(`
             SELECT SUM(l.fee) as total_fee
@@ -436,7 +492,6 @@ class LectureModel {
       let query_str = 'SELECT COUNT(*) as count FROM lectures WHERE id = ? AND is_active = true';
       let params = [id];
 
-      // ✅ tenant_id 필터링 추가
       if (tenantId) {
         query_str += ' AND tenant_id = ?';
         params.push(tenantId);

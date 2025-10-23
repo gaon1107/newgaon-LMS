@@ -33,12 +33,14 @@ import {
   Add as AddIcon
 } from '@mui/icons-material'
 import { AuthContext } from '../../contexts/AuthContext'
+import { DashboardContext } from '../../contexts/DashboardContext'
 import DraggableDialog from '../../components/common/DraggableDialog'
 import { tenantService } from '../../services/apiService'
 import { formatPhoneNumber, formatBusinessNumber, unformatPhoneNumber, unformatBusinessNumber } from '../../utils/formatters'
 
 const MembershipPage = () => {
   const { user } = useContext(AuthContext)
+  const { triggerRefresh } = useContext(DashboardContext)
   const [members, setMembers] = useState([])
   const [filteredMembers, setFilteredMembers] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -75,9 +77,10 @@ const MembershipPage = () => {
         const formattedMembers = response.data.map(tenant => ({
           id: tenant.id,
           academyName: tenant.academyName,
-          adminName: tenant.adminName || tenant.ownerName || '-',
-          email: tenant.adminEmail || tenant.email || '-',
-          phone: tenant.phone || '-',
+          adminName: tenant.ownerName || tenant.adminName || '-',
+          adminId: tenant.adminId || tenant.adminUsername || '-', // 등록한 아이디
+          email: tenant.email || tenant.adminEmail || '-',
+          phone: tenant.phone ? formatPhoneNumber(tenant.phone) : '-',
           address: tenant.address || '-',
           status: tenant.status,
           joinDate: tenant.joinDate || tenant.createdAt?.split('T')[0],
@@ -87,7 +90,7 @@ const MembershipPage = () => {
           smsBalance: tenant.smsBalance || 0,
           subscriptionPlan: tenant.subscriptionPlan,
           businessNumber: tenant.businessNumber,
-          ownerName: tenant.ownerName,
+          ownerName: tenant.ownerName || tenant.adminName,
           maxStudents: tenant.maxStudents,
           maxInstructors: tenant.maxInstructors
         }))
@@ -278,6 +281,8 @@ const MembershipPage = () => {
         if (response.success) {
           alert('학원 정보가 수정되었습니다.')
           await fetchTenants() // 목록 새로고침
+          triggerRefresh() // 🔄 대시보드 데이터 갱신 신호 전송
+          console.log('✅ 대시보드 갱신 신호 전송 완료')
         }
       } else {
         // 신규 등록은 회원가입 페이지에서만 가능
@@ -402,40 +407,84 @@ const MembershipPage = () => {
       {/* 통계 카드 */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="primary">총 가입 학원</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(102, 126, 234, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>총 가입 학원</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {members.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="success.main">정상 이용</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(245, 87, 108, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(245, 87, 108, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>정상 이용</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {members.filter(m => m.status === 'active').length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="warning.main">비활성</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(79, 172, 254, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(79, 172, 254, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>비활성</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {members.filter(m => m.status === 'inactive').length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h6" color="error.main">정지</Typography>
-              <Typography variant="h4" sx={{ fontWeight: 'bold' }}>
+          <Card sx={{
+            background: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+            color: 'white',
+            boxShadow: '0 8px 24px rgba(250, 112, 154, 0.3)',
+            borderRadius: '12px',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+              boxShadow: '0 12px 32px rgba(250, 112, 154, 0.4)'
+            }
+          }}>
+            <CardContent sx={{ textAlign: 'center', padding: '24px' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>정지</Typography>
+              <Typography variant="h3" sx={{ fontWeight: 'bold', fontSize: '2.5rem' }}>
                 {members.filter(m => m.status === 'suspended').length}
               </Typography>
             </CardContent>
@@ -476,8 +525,23 @@ const MembershipPage = () => {
             <Grid item xs={12} md={3}>
               <Button
                 fullWidth
-                variant="outlined"
+                variant="contained"
                 onClick={() => fetchTenants()}
+                sx={{
+                  background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                  boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  padding: '12px 24px',
+                  fontSize: '1rem',
+                  textTransform: 'none',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: '0 6px 25px rgba(25, 118, 210, 0.4)',
+                    transform: 'translateY(-2px)',
+                    background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)'
+                  }
+                }}
               >
                 새로고침
               </Button>
@@ -495,6 +559,7 @@ const MembershipPage = () => {
                 <TableRow>
                   <TableCell>학원명</TableCell>
                   <TableCell>관리자</TableCell>
+                  <TableCell>등록한 아이디</TableCell>
                   <TableCell>연락처</TableCell>
                   <TableCell>상태</TableCell>
                   <TableCell>가입일</TableCell>
@@ -515,6 +580,11 @@ const MembershipPage = () => {
                       </Typography>
                     </TableCell>
                     <TableCell>{member.adminName}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {member.adminId}
+                      </Typography>
+                    </TableCell>
                     <TableCell>
                       <Typography variant="body2">{member.phone}</Typography>
                       <Typography variant="caption" color="text.secondary">
@@ -592,7 +662,11 @@ const MembershipPage = () => {
         fullWidth
         title={selectedMember ? (isEditMode ? '학원 정보 수정' : '학원 상세 정보') : '신규 학원 등록'}
       >
-        <DialogContent>
+        <DialogContent sx={{ 
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          padding: '24px',
+          borderRadius: '0 0 12px 12px'
+        }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
               <TextField
@@ -733,20 +807,57 @@ const MembershipPage = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>
+        <DialogActions sx={{
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          padding: '16px 24px',
+          borderTop: '1px solid #e0e0e0',
+          borderRadius: '0 0 12px 12px',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 1
+        }}>
+          <Button 
+            onClick={handleCloseDialog}
+            sx={{
+              color: '#666',
+              '&:hover': {
+                backgroundColor: '#e0e0e0'
+              }
+            }}
+          >
             {isEditMode ? '취소' : '닫기'}
           </Button>
           {selectedMember && !isEditMode && (
             <Button
               variant="contained"
               onClick={() => setIsEditMode(true)}
+              sx={{
+                background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
+                '&:hover': {
+                  boxShadow: '0 6px 20px rgba(25, 118, 210, 0.4)',
+                  transform: 'translateY(-2px)',
+                  transition: 'all 0.3s ease'
+                }
+              }}
             >
               수정
             </Button>
           )}
           {selectedMember && isEditMode && (
-            <Button variant="contained" onClick={handleSave}>
+            <Button 
+              variant="contained" 
+              onClick={handleSave}
+              sx={{
+                background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+                boxShadow: '0 4px 15px rgba(25, 118, 210, 0.3)',
+                '&:hover': {
+                  boxShadow: '0 6px 20px rgba(25, 118, 210, 0.4)',
+                  transform: 'translateY(-2px)',
+                  transition: 'all 0.3s ease'
+                }
+              }}
+            >
               저장
             </Button>
           )}

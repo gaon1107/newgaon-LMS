@@ -162,19 +162,53 @@ export const formatDateForInput = (dateString) => {
  */
 export const displayDate = (dateString) => {
   if (!dateString) return '-'
-  
+
   try {
     const date = new Date(dateString)
     if (isNaN(date.getTime())) {
       return '-'
     }
-    
+
     const year = date.getFullYear()
     const month = date.getMonth() + 1
     const day = date.getDate()
-    
+
     return `${year}년 ${month}월 ${day}일`
   } catch (error) {
     return '-'
   }
+}
+
+/**
+ * 사업자등록번호 자동 포맷팅 함수
+ * @param {string} value - 입력된 사업자등록번호 값
+ * @returns {string} 포맷된 사업자등록번호 (예: 373-66-00087)
+ */
+export const formatBusinessNumber = (value) => {
+  // 숫자만 추출
+  const numbers = value.replace(/[^0-9]/g, '')
+
+  // 빈 문자열이면 그대로 반환
+  if (!numbers) return ''
+
+  // 사업자등록번호는 10자리 (XXX-XX-XXXXX)
+  if (numbers.length <= 3) {
+    return numbers
+  } else if (numbers.length <= 5) {
+    return `${numbers.slice(0, 3)}-${numbers.slice(3)}`
+  } else if (numbers.length <= 10) {
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 5)}-${numbers.slice(5, 10)}`
+  } else {
+    // 10자리 초과시 잘라내기
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 5)}-${numbers.slice(5, 10)}`
+  }
+}
+
+/**
+ * 사업자등록번호에서 하이픈 제거 (저장용)
+ * @param {string} value - 포맷된 사업자등록번호
+ * @returns {string} 숫자만 있는 사업자등록번호
+ */
+export const unformatBusinessNumber = (value) => {
+  return value.replace(/[^0-9]/g, '')
 }

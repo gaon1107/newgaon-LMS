@@ -512,9 +512,82 @@ const registerAcademy = async (req, res) => {
   }
 };
 
+// 비밀번호 변경
+const changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id
+    const tenantId = req.user.tenant_id
+    const { currentPassword, newPassword } = req.body
+
+    // 입력값 검증
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: '현재 비밀번호와 새 비밀번호를 입력해주세요.'
+      })
+    }
+
+    // 비밀번호 강도 검증 (최소 8자)
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: '새 비밀번호는 8자 이상이어야 합니다.'
+      })
+    }
+
+    // 현재 사용자 정보 조회
+    const users = await query(
+      'SELECT id, password_hash FROM users WHERE id = ? AND tenant_id = ?',
+      [userId, tenantId]
+    )
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '사용자를 찾을 수 없습니다.'
+      })
+    }
+
+    const user = users[0]
+
+    // 현재 비밀번호 검증
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password_hash)
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: '현재 비밀번호가 일치하지 않습니다.'
+      })
+    }
+
+    // 새 비밀번호 해싱
+    const newPasswordHash = await bcrypt.hash(newPassword, 10)
+
+    // 비밀번호 업데이트
+    await query(
+      'UPDATE users SET password_hash = ?, updated_at = NOW() WHERE id = ? AND tenant_id = ?',
+      [newPasswordHash, userId, tenantId]
+    )
+
+    res.json({
+      success: true,
+      message: '비밀번호가 성공적으로 변경되었습니다.'
+    })
+
+    console.log(`✅ 비밀번호 변경 완료: user_id=${userId}, tenant_id=${tenantId}`)
+
+  } catch (error) {
+    console.error('Change password error:', error)
+    res.status(500).json({
+      success: false,
+      message: '비밀번호 변경 중 오류가 발생했습니다.'
+    })
+  }
+}
+
 module.exports = {
   login,
   refreshToken,
   getCurrentUser,
-  registerAcademy
+  registerAcademy,
+  changePassword
 };

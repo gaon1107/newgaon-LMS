@@ -13,7 +13,8 @@ import {
   Paper,
   DialogContent,
   DialogActions,
-  IconButton
+  IconButton,
+  Snackbar
 } from '@mui/material'
 import {
   Settings as SettingsIcon,
@@ -22,7 +23,8 @@ import {
   Refresh as RefreshIcon,
   Launch as LaunchIcon,
   Close as CloseIcon,
-  DeleteForever as DeleteForeverIcon
+  DeleteForever as DeleteForeverIcon,
+  CheckCircle as CheckCircleIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../../components/common/DraggableDialog'
 import { tenantService } from '../../services/apiService'
@@ -34,6 +36,11 @@ const SettingsPage = () => {
   const [passwordDialog, setPasswordDialog] = useState(false)
   const [withdrawalDialog, setWithdrawalDialog] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  })
 
   const [settings, setSettings] = useState({
     // 학원 기본 설정
@@ -61,7 +68,6 @@ const SettingsPage = () => {
   const [withdrawalPassword, setWithdrawalPassword] = useState('')
 
   const [loading, setLoading] = useState(false)
-  const [saveMessage, setSaveMessage] = useState('')
 
   // 학원 정보 로드
   useEffect(() => {
@@ -86,7 +92,7 @@ const SettingsPage = () => {
         }
       } catch (error) {
         console.error('학원 정보 로드 실패:', error)
-        setSaveMessage('학원 정보를 불러오는데 실패했습니다.')
+        showSnackbar('학원 정보를 불러오는데 실패했습니다.', 'error')
       } finally {
         setInitialLoading(false)
       }
@@ -94,6 +100,21 @@ const SettingsPage = () => {
 
     loadTenantInfo()
   }, [user])
+
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    })
+  }
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false
+    })
+  }
 
   const handleSettingChange = (field) => (event) => {
     let value = event.target.value
@@ -139,14 +160,13 @@ const SettingsPage = () => {
       const response = await tenantService.updateMyTenant(tenantData)
 
       if (response.success) {
-        setSaveMessage('설정이 성공적으로 저장되었습니다.')
-        setTimeout(() => setSaveMessage(''), 3000)
+        showSnackbar('설정이 성공적으로 저장되었습니다.', 'success')
       } else {
-        setSaveMessage('설정 저장에 실패했습니다.')
+        showSnackbar('설정 저장에 실패했습니다.', 'error')
       }
     } catch (error) {
       console.error('설정 저장 실패:', error)
-      setSaveMessage('설정 저장에 실패했습니다.')
+      showSnackbar('설정 저장에 실패했습니다.', 'error')
     } finally {
       setLoading(false)
     }
@@ -165,22 +185,26 @@ const SettingsPage = () => {
 
     setLoading(true)
     try {
-      // API 호출 로직
-      console.log('비밀번호 변경')
+      const response = await authService.changePassword(
+        passwordData.currentPassword,
+        passwordData.newPassword
+      )
 
-      // 임시 지연
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      alert('비밀번호가 성공적으로 변경되었습니다.')
-      setPasswordDialog(false)
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      })
+      if (response.success) {
+        showSnackbar('비밀번호가 성공적으로 변경되었습니다.', 'success')
+        setPasswordDialog(false)
+        setPasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: ''
+        })
+      } else {
+        showSnackbar(response.message || '비밀번호 변경에 실패했습니다.', 'error')
+      }
     } catch (error) {
       console.error('비밀번호 변경 실패:', error)
-      alert('비밀번호 변경에 실패했습니다.')
+      const errorMessage = error.response?.data?.message || '비밀번호 변경에 실패했습니다.'
+      showSnackbar(errorMessage, 'error')
     } finally {
       setLoading(false)
     }
@@ -216,15 +240,17 @@ const SettingsPage = () => {
       const response = await tenantService.deleteMyTenant(withdrawalPassword)
 
       if (response.success) {
-        alert('탈퇴가 완료되었습니다. 그동안 이용해주셔서 감사합니다.')
+        showSnackbar('탈퇴가 완료되었습니다. 그동안 이용해주셔서 감사합니다.', 'success')
         // 로그아웃 처리
         authService.removeTokens()
-        window.location.href = '/'
+        setTimeout(() => {
+          window.location.href = '/'
+        }, 2000)
       }
     } catch (error) {
       console.error('탈퇴 실패:', error)
       const errorMessage = error.response?.data?.error || '탈퇴 처리 중 오류가 발생했습니다.'
-      alert(errorMessage)
+      showSnackbar(errorMessage, 'error')
     } finally {
       setLoading(false)
     }
@@ -249,16 +275,6 @@ const SettingsPage = () => {
         <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
         설정 관리
       </Typography>
-
-      {saveMessage && (
-        <Alert
-          severity={saveMessage.includes('실패') ? 'error' : 'success'}
-          sx={{ mb: 3 }}
-          onClose={() => setSaveMessage('')}
-        >
-          {saveMessage}
-        </Alert>
-      )}
 
       <Grid container spacing={3}>
         {/* 학원 기본 설정 */}
@@ -891,6 +907,27 @@ const SettingsPage = () => {
           </Button>
         </DialogActions>
       </DraggableDialog>
+
+      {/* 하단 고정 알림 (Snackbar) */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          icon={snackbar.severity === 'success' ? <CheckCircleIcon /> : undefined}
+          sx={{
+            width: '100%',
+            boxShadow: 2,
+            borderRadius: 1
+          }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

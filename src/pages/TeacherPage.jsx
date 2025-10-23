@@ -23,11 +23,12 @@ import {
   Search as SearchIcon
 } from '@mui/icons-material'
 import DraggableDialog from '../components/common/DraggableDialog'
-import { instructorService } from '../services/apiService'
+import { instructorService, lectureService } from '../services/apiService'
 import { formatPhoneNumber, formatCurrency, parseCurrency, formatDateForInput } from '../utils/formatters'
 
 const TeacherPage = () => {
   const [instructors, setInstructors] = useState([])
+  const [lectures, setLectures] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingInstructor, setEditingInstructor] = useState(null)
@@ -50,8 +51,6 @@ const TeacherPage = () => {
     name: '',
     phone: '',
     email: '',
-    department: '',
-    subject: '',
     hireDate: '',
     address: '',
     notes: '',
@@ -60,9 +59,42 @@ const TeacherPage = () => {
     status: 'active'
   })
 
+  // 강사의 담당 강의 목록을 반환하는 헬퍼 함수
+  const getInstructorLectures = (instructorId) => {
+    if (!lectures || lectures.length === 0) return '미배정'
+    
+    // ✅ 복수 강사 지원: instructorIds 배열 우선 사용
+    const assignedLectures = lectures.filter(lecture => {
+      // 복수 강사 배열에서 찾기 (우선순위: 1순위)
+      if (Array.isArray(lecture.instructorIds) && lecture.instructorIds.includes(instructorId)) {
+        return true
+      }
+      // 호환성: 단일 강사 ID (우선순위: 2순위)
+      if (lecture.instructor_id === instructorId) {
+        return true
+      }
+      return false
+    })
+
+    if (assignedLectures.length === 0) return '미배정'
+    return assignedLectures.map(l => l.name).join(', ')
+  }
+
   useEffect(() => {
     loadInstructors()
+    loadLectures()
   }, [pagination.currentPage, searchTerm])
+
+  const loadLectures = async () => {
+    try {
+      const response = await lectureService.getLectures()
+      if (response.success) {
+        setLectures(response.data.lectures || [])
+      }
+    } catch (error) {
+      console.error('❌ 강의 목록 로딩 실패:', error)
+    }
+  }
 
   const loadInstructors = async () => {
     setLoading(true)
@@ -75,17 +107,6 @@ const TeacherPage = () => {
       )
       
       console.log('✅ 강사 목록 로딩 성공:', response)
-      
-      // 🔍 급여 디버깅 로그 추가
-      if (response.success && response.data.instructors) {
-        console.log('===== 강사 급여 디버깅 =====');
-        response.data.instructors.forEach(instructor => {
-          console.log(`ID ${instructor.id} - ${instructor.name}:`);
-          console.log('  - salary 원본 값:', instructor.salary);
-          console.log('  - typeof:', typeof instructor.salary);
-        });
-        console.log('============================');
-      }
       
       if (response.success) {
         setInstructors(response.data.instructors || [])
@@ -120,8 +141,6 @@ const TeacherPage = () => {
       name: '',
       phone: '',
       email: '',
-      department: '',
-      subject: '',
       hireDate: '',
       address: '',
       notes: '',
@@ -134,13 +153,12 @@ const TeacherPage = () => {
   const handleOpenDialog = (instructor = null) => {
     if (instructor) {
       setEditingInstructor(instructor)
+      
       setFormData({
         name: instructor.name || '',
         phone: formatPhoneNumber(instructor.phone || ''),
         email: instructor.email || '',
-        department: instructor.department || '',
-        subject: instructor.subject || '',
-        hireDate: formatDateForInput(instructor.hire_date) || '', // 날짜 형식 변환
+        hireDate: formatDateForInput(instructor.hire_date) || '',
         address: instructor.address || '',
         notes: instructor.notes || '',
         salary: instructor.salary ? formatCurrency(instructor.salary.toString()) : '',
@@ -163,12 +181,10 @@ const TeacherPage = () => {
   const handleInputChange = (field) => (event) => {
     let value = event.target.value
 
-    // 전화번호 필드 자동 포맷팅
     if (field === 'phone') {
       value = formatPhoneNumber(value)
     }
 
-    // 급여 필드 자동 포맷팅
     if (field === 'salary') {
       value = formatCurrency(value)
     }
@@ -181,12 +197,19 @@ const TeacherPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    
+
     try {
-      // 저장용 데이터 준비 (포맷 제거)
       const submitData = {
-        ...formData,
-        salary: parseCurrency(formData.salary) // 급여는 순수 숫자로 변환
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        hireDate: formData.hireDate,
+        address: formData.address,
+        notes: formData.notes,
+        salary: parseCurrency(formData.salary),
+        employmentType: formData.employmentType,
+        status: formData.status,
+        assignedLectures: []
       }
 
       if (editingInstructor) {
@@ -274,45 +297,16 @@ const TeacherPage = () => {
       }
     },
     {
-      field: 'department',
-      headerName: '학과',
-      width: 120,
-      renderCell: (params) => {
-        return (
-          <Typography variant="body2" noWrap>
-            {params.value || '-'}
-          </Typography>
-        )
-      }
-    },
-    {
-      field: 'subject',
-      headerName: '담당 과목',
-      width: 200,
-      renderCell: (params) => {
-        if (!params.value) return <Typography variant="body2">-</Typography>
-        
-        return (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {params.value.split(',').map((subject, index) => (
-              <Chip
-                key={index}
-                label={subject.trim()}
-                size="small"
-              />
-            ))}
-          </Box>
-        )
-      }
-    },
-    {
-      field: 'lectures',
+      field: 'id',
       headerName: '담당 강의',
-      width: 180,
+      width: 300,
+      sortable: false,
+      filterable: false,
       renderCell: (params) => {
+        const lectureNames = getInstructorLectures(params.row.id)
         return (
-          <Typography variant="body2" noWrap>
-            {params.value || '미배정'}
+          <Typography variant="body2" noWrap title={lectureNames}>
+            {lectureNames}
           </Typography>
         )
       }
@@ -414,7 +408,7 @@ const TeacherPage = () => {
             <Grid item xs={12} sm={8}>
               <TextField
                 fullWidth
-                placeholder="강사 이름, 학과, 과목 검색"
+                placeholder="강사 이름 검색"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 InputProps={{
@@ -458,7 +452,7 @@ const TeacherPage = () => {
               disableColumnFilter={false}
               disableColumnSort={false}
               sx={{
-                minWidth: 1000,
+                minWidth: 1200,
                 '& .MuiDataGrid-cell': {
                   display: 'flex',
                   alignItems: 'center',
@@ -547,23 +541,6 @@ const TeacherPage = () => {
                   type="email"
                   value={formData.email}
                   onChange={handleInputChange('email')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="학과"
-                  value={formData.department}
-                  onChange={handleInputChange('department')}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="담당 과목"
-                  value={formData.subject}
-                  onChange={handleInputChange('subject')}
-                  helperText="쉼표로 구분 (예: 수학, 영어)"
                 />
               </Grid>
               <Grid item xs={12} sm={6}>

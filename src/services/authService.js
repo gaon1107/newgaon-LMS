@@ -133,8 +133,23 @@ export const authService = {
     if (!refreshToken) {
       throw new Error('No refresh token available')
     }
-    
+
     const response = await apiClient.post('/auth/refresh', { refreshToken })
+    return response.data
+  },
+
+  // 학원 회원가입
+  registerAcademy: async (registrationData) => {
+    const response = await apiClient.post('/auth/register-academy', registrationData)
+    return response.data
+  },
+
+  // 비밀번호 변경
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await apiClient.post('/auth/change-password', {
+      currentPassword,
+      newPassword
+    })
     return response.data
   },
 

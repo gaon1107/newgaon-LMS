@@ -47,9 +47,9 @@ class InstructorModel {
 
       // 검색 조건
       if (search) {
-        whereClauses.push('(i.name LIKE ? OR i.department LIKE ? OR i.subject LIKE ? OR i.phone LIKE ?)');
+        whereClauses.push('(i.name LIKE ? OR i.phone LIKE ?)');
         const searchPattern = `%${search}%`;
-        queryParams.push(searchPattern, searchPattern, searchPattern, searchPattern);
+        queryParams.push(searchPattern, searchPattern);
       }
 
       // 학과 필터
@@ -191,16 +191,14 @@ class InstructorModel {
         // ✅ 강사 기본 정보 삽입 (tenant_id 포함)
         const insertQuery = `
           INSERT INTO instructors (
-            name, department, subject, phone, email, hire_date,
+            name, phone, email, hire_date,
             address, notes, salary, employment_type, status,
             profile_image_url, tenant_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
           basicData.name,
-          basicData.department || null,
-          basicData.subject || null,
           basicData.phone || null,
           basicData.email || null,
           formatDateForMySQL(basicData.hireDate), // 날짜 형식 변환
@@ -219,19 +217,24 @@ class InstructorModel {
         // 강의 연결
         if (assignedLectures.length > 0) {
           for (const lectureId of assignedLectures) {
+            // 🔧 강의 ID는 문자열이므로 그대로 사용, tenant_id 추가
+            const lectureIdStr = String(lectureId).trim();
+            
             await conn.execute(
-              'INSERT INTO instructor_lectures (instructor_id, lecture_id) VALUES (?, ?)',
-              [instructorId, lectureId]
+              'INSERT INTO instructor_lectures (instructor_id, lecture_id, tenant_id) VALUES (?, ?, ?)',
+              [instructorId, lectureIdStr, tenantId]
             );
           }
 
           // 강의별 담당 강사 업데이트
           for (const lectureId of assignedLectures) {
+            const lectureIdStr = String(lectureId).trim();
+            
             await conn.execute(`
               UPDATE lectures
               SET instructor_id = ?
               WHERE id = ?
-            `, [instructorId, lectureId]);
+            `, [instructorId, lectureIdStr]);
           }
         }
 
@@ -267,10 +270,10 @@ class InstructorModel {
           }
         }
 
-        // 강사 기본 정보 업데이트
+        // 🔧 수정: department, subject 필드 제거 (프론트에서 보내지 않음)
         const updateQuery = `
           UPDATE instructors SET
-            name = ?, department = ?, subject = ?, phone = ?,
+            name = ?, phone = ?,
             email = ?, hire_date = ?, address = ?, notes = ?,
             salary = ?, employment_type = ?, status = ?,
             profile_image_url = ?, updated_at = NOW()
@@ -279,8 +282,6 @@ class InstructorModel {
 
         const updateParams = [
           basicData.name,
-          basicData.department || null,
-          basicData.subject || null,
           basicData.phone || null,
           basicData.email || null,
           formatDateForMySQL(basicData.hireDate), // 날짜 형식 변환
@@ -310,28 +311,33 @@ class InstructorModel {
         // 새로운 강의 연결
         if (assignedLectures.length > 0) {
           for (const lectureId of assignedLectures) {
+            // 🔧 강의 ID는 문자열이므로 그대로 사용, tenant_id 추가
+            const lectureIdStr = String(lectureId).trim();
+            
+            console.log(`📝 강의 연결 중 - instructorId: ${id}, lectureId: ${lectureIdStr}, tenantId: ${tenantId}`);
+            
             // 기존 연결이 있으면 활성화, 없으면 새로 생성
             const [existing] = await conn.execute(
               'SELECT id FROM instructor_lectures WHERE instructor_id = ? AND lecture_id = ?',
-              [id, lectureId]
+              [id, lectureIdStr]
             );
 
             if (existing.length > 0) {
               await conn.execute(
                 'UPDATE instructor_lectures SET is_active = true WHERE instructor_id = ? AND lecture_id = ?',
-                [id, lectureId]
+                [id, lectureIdStr]
               );
             } else {
               await conn.execute(
-                'INSERT INTO instructor_lectures (instructor_id, lecture_id) VALUES (?, ?)',
-                [id, lectureId]
+                'INSERT INTO instructor_lectures (instructor_id, lecture_id, tenant_id) VALUES (?, ?, ?)',
+                [id, lectureIdStr, tenantId]
               );
             }
 
             // 강의의 담당 강사 업데이트
             await conn.execute(`
               UPDATE lectures SET instructor_id = ? WHERE id = ?
-            `, [id, lectureId]);
+            `, [id, lectureIdStr]);
           }
         }
 
@@ -346,7 +352,6 @@ class InstructorModel {
     }
   }
 
-  // 강사 삭제 (소프트 삭제)
   // 강사 삭제 (완전 삭제)
   static async deleteInstructor(id, tenantId = null) {
     try {
