@@ -43,6 +43,13 @@ const AttendanceView = () => {
   const [comment, setComment] = useState('')
   const [messageModalOpen, setMessageModalOpen] = useState(false)
 
+  // 개별 메시지 전송 state
+  const [individualMessageOpen, setIndividualMessageOpen] = useState(false)
+  const [messageStudent, setMessageStudent] = useState(null)
+  const [messageText, setMessageText] = useState('')
+  const [messageTarget, setMessageTarget] = useState('student') // 'student' or 'parent'
+  const [messageSending, setMessageSending] = useState(false)
+
   // 상태 옵션
   const statusOptions = [
     { value: 'present', label: '등원', description: '정상 등원' },
@@ -92,7 +99,75 @@ const AttendanceView = () => {
   }
 
   const handleSendMessage = (student) => {
-    console.log('메시지 전송:', student.name)
+    setMessageStudent(student)
+    setMessageText('')
+    setMessageTarget('student')
+    setIndividualMessageOpen(true)
+  }
+
+  const handleCloseMessageDialog = () => {
+    setIndividualMessageOpen(false)
+    setMessageStudent(null)
+    setMessageText('')
+    setMessageTarget('student')
+  }
+
+  const handleSendIndividualMessage = async () => {
+    if (!messageText.trim() || !messageStudent) return
+
+    setMessageSending(true)
+    try {
+      const phoneNumber = messageTarget === 'student' ? messageStudent.phone : messageStudent.parentPhone
+
+      if (!phoneNumber) {
+        alert(`${messageTarget === 'student' ? '학생' : '학부모'} 연락처가 등록되어 있지 않습니다.`)
+        setMessageSending(false)
+        return
+      }
+
+      // SMS 발송 API 호출
+      const response = await fetch('/api/tenants/me/sms/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: JSON.stringify({
+          studentId: messageStudent.id,
+          phoneNumber: phoneNumber,
+          message: messageText,
+          messageType: messageTarget === 'student' ? 'manual_student' : 'manual_parent'
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        // 구체적인 오류 메시지 표시
+        if (data.error?.code === 'INSUFFICIENT_SMS_BALANCE') {
+          alert('[메시지 전송 실패]\n\nSMS 잔액이 부족합니다.\nSMS를 충전해주세요.')
+        } else if (data.error?.code === 'INVALID_PHONE_NUMBER') {
+          alert('[메시지 전송 실패]\n\n유효하지 않은 전화번호입니다.\n전화번호를 확인해주세요.')
+        } else if (data.error?.message) {
+          alert(`[메시지 전송 실패]\n\n${data.error.message}`)
+        } else {
+          alert('[메시지 전송 실패]\n\n메시지 전송에 실패했습니다.\n잠시 후 다시 시도해주세요.')
+        }
+        setMessageSending(false)
+        return
+      }
+
+      alert(`메시지가 발송되었습니다.\n\nSMS 잔액: ${data.data.newBalance}건`)
+      handleCloseMessageDialog()
+    } catch (error) {
+      console.error('메시지 전송 실패:', error)
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        alert('[네트워크 오류]\n\n인터넷 연결을 확인해주세요.')
+      } else {
+        alert(`[메시지 전송 중 오류 발생]\n\n${error.message || '알 수 없는 오류가 발생했습니다.'}`)
+      }
+      setMessageSending(false)
+    }
   }
 
   const handleStatusClick = (student) => {
@@ -329,6 +404,122 @@ const AttendanceView = () => {
         open={messageModalOpen}
         onClose={() => setMessageModalOpen(false)}
       />
+
+      {/* 개별 메시지 전송 다이얼로그 */}
+      <DraggableDialog
+        open={individualMessageOpen}
+        onClose={handleCloseMessageDialog}
+        maxWidth="sm"
+        fullWidth
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">
+              <MessageIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+              메시지 전송
+            </Typography>
+            <IconButton onClick={handleCloseMessageDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        }
+      >
+        <DialogContent>
+          {messageStudent && (
+            <>
+              {/* 수신인 */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  수신인:
+                </Typography>
+                <Chip
+                  label={`${messageStudent.identifier}. ${messageStudent.name}`}
+                  color="primary"
+                  sx={{ fontWeight: 'bold' }}
+                />
+              </Box>
+
+              {/* 대상 선택 (학생/학부모) */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  대상:
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      id="target-student"
+                      checked={messageTarget === 'student'}
+                      onChange={() => setMessageTarget('student')}
+                      style={{ marginRight: 8 }}
+                    />
+                    <label htmlFor="target-student">학생</label>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      id="target-parent"
+                      checked={messageTarget === 'parent'}
+                      onChange={() => setMessageTarget('parent')}
+                      style={{ marginRight: 8 }}
+                    />
+                    <label htmlFor="target-parent">학부모</label>
+                  </Box>
+                </Box>
+              </Box>
+
+              {/* 메시지 입력 */}
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                value={messageText}
+                onChange={(e) => {
+                  if (e.target.value.length <= 90) {
+                    setMessageText(e.target.value)
+                  }
+                }}
+                placeholder="메시지를 입력하세요 (최대 90자)"
+                variant="outlined"
+                sx={{ mb: 1 }}
+              />
+
+              {/* 글자 수 카운터 */}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Typography variant="caption" color="text.secondary">
+                  {messageText.length}/90 SMS
+                </Typography>
+              </Box>
+
+              {/* 연락처 표시 */}
+              {messageTarget === 'student' && !messageStudent.phone && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  학생 연락처가 등록되어 있지 않습니다.
+                </Alert>
+              )}
+              {messageTarget === 'parent' && !messageStudent.parentPhone && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  학부모 연락처가 등록되어 있지 않습니다.
+                </Alert>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={handleCloseMessageDialog} variant="outlined">
+            취소
+          </Button>
+          <Button
+            onClick={handleSendIndividualMessage}
+            variant="contained"
+            disabled={!messageText.trim() || messageSending ||
+              (messageTarget === 'student' && !messageStudent?.phone) ||
+              (messageTarget === 'parent' && !messageStudent?.parentPhone)}
+            startIcon={messageSending ? null : <MessageIcon />}
+          >
+            {messageSending ? '전송 중...' : '전송'}
+          </Button>
+        </DialogActions>
+      </DraggableDialog>
     </Card>
   )
 }

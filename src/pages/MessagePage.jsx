@@ -51,6 +51,7 @@ const MessagePage = () => {
   const [selectedStudents, setSelectedStudents] = useState([])
   const [messageHistory, setMessageHistory] = useState([])
   const [loading, setLoading] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [previewDialog, setPreviewDialog] = useState({ open: false, data: null })
 
   // 메세지 템플릿 관리
@@ -144,11 +145,17 @@ const MessagePage = () => {
   ]
 
   useEffect(() => {
-    loadMessageHistory()
     loadMessageTemplates()
     // 초기에 전체 학생 선택
     setSelectedStudents(mockStudents)
   }, [])
+
+  // 발송 기록 탭 선택 시 API 호출
+  useEffect(() => {
+    if (tabValue === 1) {
+      loadMessageHistory()
+    }
+  }, [tabValue])
 
   useEffect(() => {
     // 학생 데이터가 변경되면 selectedStudents 업데이트
@@ -157,8 +164,41 @@ const MessagePage = () => {
     }
   }, [students])
 
-  const loadMessageHistory = () => {
-    setMessageHistory(mockMessageHistory)
+  const loadMessageHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const response = await fetch('/api/tenants/me/sms/usage?page=1&limit=1000', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        }
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        // API 데이터를 DataGrid 형식으로 변환
+        const formattedHistory = data.data.logs.map((log, index) => ({
+          id: log.id,
+          date: new Date(log.sent_at).toLocaleString('ko-KR'),
+          type: 'SMS',
+          recipients: log.student_name || log.phone_number,
+          content: log.message,
+          status: log.status,
+          messageType: log.message_type
+        }))
+
+        setMessageHistory(formattedHistory)
+        console.log('✅ 발송 기록 로드 완료:', formattedHistory.length + '건')
+      } else {
+        console.error('발송 기록 조회 실패:', data.error)
+        setMessageHistory([])
+      }
+    } catch (error) {
+      console.error('발송 기록 로드 오류:', error)
+      setMessageHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   const loadMessageTemplates = () => {
@@ -487,35 +527,79 @@ const MessagePage = () => {
   const confirmSend = async () => {
     setLoading(true)
     try {
-      // 실제 API 호출
-      console.log('메시지 발송:', previewDialog.data)
-      
-      // 발송 기록 추가
-      const newMessage = {
-        id: Date.now(),
-        type: previewDialog.data.type,
-        recipients: recipients === 'all' ? '전체 학생' : '선택된 학생',
-        content: previewDialog.data.content,
-        sentAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        recipientCount: previewDialog.data.recipientCount,
-        cost: previewDialog.data.totalCost,
-        status: 'sent'
+      const { content, recipients: studentList } = previewDialog.data
+
+      let successCount = 0
+      let failCount = 0
+      const failedStudents = [] // 실패한 학생과 이유 수집
+
+      // 각 학생에게 개별 SMS 발송
+      for (const student of studentList) {
+        try {
+          const response = await fetch('/api/tenants/me/sms/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            },
+            body: JSON.stringify({
+              studentId: student.id,
+              phoneNumber: student.parentPhone,
+              message: content,
+              messageType: 'bulk_manual'
+            })
+          })
+
+          const data = await response.json()
+
+          if (response.ok) {
+            successCount++
+          } else {
+            failCount++
+            // 구체적인 실패 이유 수집
+            let reason = '알 수 없는 오류'
+            if (data.error?.code === 'INSUFFICIENT_SMS_BALANCE') {
+              reason = 'SMS 잔액 부족'
+            } else if (data.error?.code === 'INVALID_PHONE_NUMBER') {
+              reason = '유효하지 않은 전화번호'
+            } else if (data.error?.message) {
+              reason = data.error.message
+            }
+            failedStudents.push({ name: student.name, reason })
+            console.error(`${student.name} 발송 실패:`, data.error)
+          }
+        } catch (error) {
+          failCount++
+          failedStudents.push({ name: student.name, reason: '네트워크 오류' })
+          console.error(`${student.name} 발송 에러:`, error)
+        }
       }
-      
-      setMessageHistory(prev => [newMessage, ...prev])
-      
+
       // 폼 초기화
       setMessageContent('')
       setRecipients('all')
       setSelectedStudents(mockStudents)
-      
+
       setPreviewDialog({ open: false, data: null })
+
+      // 발송 기록 새로고침
+      await loadMessageHistory()
       setTabValue(1) // 발송 기록 탭으로 이동
-      
-      alert('메시지가 성공적으로 발송되었습니다!')
+
+      // 결과 메시지 생성
+      let resultMessage = `메시지 발송 완료!\n\n성공: ${successCount}건\n실패: ${failCount}건`
+
+      if (failedStudents.length > 0) {
+        resultMessage += '\n\n[실패 내역]'
+        failedStudents.forEach(({ name, reason }) => {
+          resultMessage += `\n- ${name}: ${reason}`
+        })
+      }
+
+      alert(resultMessage)
     } catch (error) {
       console.error('메시지 발송 실패:', error)
-      alert('메시지 발송에 실패했습니다.')
+      alert('[메시지 발송 오류]\n\n메시지 발송 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.')
     } finally {
       setLoading(false)
     }
@@ -718,7 +802,7 @@ const MessagePage = () => {
               <DataGrid
                 rows={messageHistory}
                 columns={historyColumns}
-                loading={false}
+                loading={historyLoading}
                 pageSizeOptions={[10, 25, 50, 100]}
                 initialState={{
                   pagination: {

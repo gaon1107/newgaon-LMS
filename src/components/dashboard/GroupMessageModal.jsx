@@ -190,26 +190,73 @@ const GroupMessageModal = ({ open, onClose }) => {
   const confirmSend = async () => {
     setLoading(true)
     try {
-      // 실제 API 호출 로직
-      console.log('메시지 발송:', {
-        content: messageContent,
-        recipients: selectedStudents,
-        type: messageInfo.type,
-        cost: getTotalCost()
-      })
+      let successCount = 0
+      let failCount = 0
+      const failedStudents = [] // 실패한 학생과 이유 수집
+
+      // 각 학생에게 개별 SMS 발송
+      for (const student of selectedStudents) {
+        try {
+          const response = await fetch('/api/tenants/me/sms/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+            },
+            body: JSON.stringify({
+              studentId: student.id,
+              phoneNumber: student.parentPhone || student.phone,
+              message: messageContent,
+              messageType: 'group_manual'
+            })
+          })
+
+          const data = await response.json()
+
+          if (response.ok) {
+            successCount++
+          } else {
+            failCount++
+            // 구체적인 실패 이유 수집
+            let reason = '알 수 없는 오류'
+            if (data.error?.code === 'INSUFFICIENT_SMS_BALANCE') {
+              reason = 'SMS 잔액 부족'
+            } else if (data.error?.code === 'INVALID_PHONE_NUMBER') {
+              reason = '유효하지 않은 전화번호'
+            } else if (data.error?.message) {
+              reason = data.error.message
+            }
+            failedStudents.push({ name: student.name, reason })
+            console.error(`${student.name} 발송 실패:`, data.error)
+          }
+        } catch (error) {
+          failCount++
+          failedStudents.push({ name: student.name, reason: '네트워크 오류' })
+          console.error(`${student.name} 발송 에러:`, error)
+        }
+      }
 
       // 발송 완료 후 모달 닫기
-      setTimeout(() => {
-        setLoading(false)
-        setPreviewDialog(false)
-        onClose()
-        alert('메시지가 성공적으로 발송되었습니다!')
-      }, 1000)
+      setLoading(false)
+      setPreviewDialog(false)
+      onClose()
+
+      // 결과 메시지 생성
+      let resultMessage = `메시지 발송 완료!\n\n성공: ${successCount}건\n실패: ${failCount}건`
+
+      if (failedStudents.length > 0) {
+        resultMessage += '\n\n[실패 내역]'
+        failedStudents.forEach(({ name, reason }) => {
+          resultMessage += `\n- ${name}: ${reason}`
+        })
+      }
+
+      alert(resultMessage)
 
     } catch (error) {
       console.error('메시지 발송 실패:', error)
       setLoading(false)
-      alert('메시지 발송에 실패했습니다.')
+      alert('[메시지 발송 오류]\n\n메시지 발송 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.')
     }
   }
 

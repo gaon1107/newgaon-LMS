@@ -113,6 +113,28 @@ const createStudent = async (req, res) => {
   } catch (error) {
     console.error('createStudent error:', error);
 
+    // ✅ 이름 중복 에러 처리
+    if (error.message && error.message.includes('이미 등록된 학생 이름입니다')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_NAME',
+          message: '이미 등록된 학생 이름입니다.'
+        }
+      });
+    }
+
+    // 출결번호 중복 에러 처리
+    if (error.message && error.message.includes('이미 사용 중인 출결번호입니다')) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE_ATTENDANCE_NUMBER',
+          message: '이미 사용 중인 출결번호입니다.'
+        }
+      });
+    }
+
     // 중복 키 에러 처리
     if (error.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({

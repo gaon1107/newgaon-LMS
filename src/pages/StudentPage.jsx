@@ -46,45 +46,40 @@ const StudentPage = () => {
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false)
   const [cameraStream, setCameraStream] = useState(null)
   const [showCamera, setShowCamera] = useState(false)
+  const [formError, setFormError] = useState(null)
 
   const [formData, setFormData] = useState({
     name: '',
     school: '',
     grade: '',
-    department: '',
     phone: '',
     parentPhone: '',
-    attendanceNumber: '', // 4자리 출결번호 추가
+    attendanceNumber: '',
     email: '',
     class: '',
     birthDate: '',
     address: '',
     notes: '',
-    // 추가된 필드들
     selectedClasses: [],
     classFee: 0,
     paymentDueDate: '',
     sendPaymentNotification: true,
     profileImage: null,
     capturedImage: null,
-    // 자동 메시지 설정
     autoMessages: {
-      attendance: true,    // 등하원 (기본 체크)
-      outing: false,       // 외출/복귀
-      imagePost: false,    // 이미지포함
-      studyMonitoring: false  // 학습관제
+      attendance: true,
+      outing: false,
+      imagePost: false,
+      studyMonitoring: false
     }
   })
 
   // 전화번호 포맷팅 함수
   const formatPhoneNumber = (value) => {
-    // 숫자만 추출
     const numbers = value.replace(/[^0-9]/g, '')
     
-    // 빈 문자열이면 그대로 반환
     if (!numbers) return ''
     
-    // 010으로 시작하는 경우 (11자리)
     if (numbers.startsWith('010')) {
       if (numbers.length <= 3) {
         return numbers
@@ -93,11 +88,9 @@ const StudentPage = () => {
       } else if (numbers.length <= 11) {
         return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
       } else {
-        // 11자리 초과시 잘라내기
         return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
       }
     }
-    // 011, 016, 017, 018, 019로 시작하는 경우
     else if (numbers.startsWith('011') || numbers.startsWith('016') || numbers.startsWith('017') || numbers.startsWith('018') || numbers.startsWith('019')) {
       if (numbers.length <= 3) {
         return numbers
@@ -109,7 +102,6 @@ const StudentPage = () => {
         return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`
       }
     }
-    // 02로 시작하는 경우 (서울)
     else if (numbers.startsWith('02')) {
       if (numbers.length <= 2) {
         return numbers
@@ -123,7 +115,6 @@ const StudentPage = () => {
         return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`
       }
     }
-    // 기타 지역번호 (3자리)
     else {
       if (numbers.length <= 3) {
         return numbers
@@ -142,27 +133,15 @@ const StudentPage = () => {
     ...(Array.isArray(lectures) ? lectures.map(lecture => ({
       id: lecture.id,
       name: lecture.name,
-      fee: Number(lecture.fee) || 0  // 문자열이든 숫자든 숫자로 변환
+      fee: Number(lecture.fee) || 0
     })) : [])
   ]
-
-
-  const mockDepartments = [
-    { id: 'math', name: '수학과' },
-    { id: 'english', name: '영어과' },
-    { id: 'science', name: '과학과' },
-    { id: 'korean', name: '국어과' },
-    { id: 'social', name: '사회과' },
-    { id: 'art', name: '예체과' }
-  ]
-
 
   const resetForm = () => {
     setFormData({
       name: '',
       school: '',
       grade: '',
-      department: '',
       phone: '',
       parentPhone: '',
       attendanceNumber: '',
@@ -190,11 +169,9 @@ const StudentPage = () => {
     if (student) {
       setEditingStudent(student)
 
-      // 날짜를 YYYY-MM-DD 형식으로 변환하는 함수
       const formatDateForInput = (dateValue) => {
         if (!dateValue) return ''
 
-        // ISO 날짜 형식이면 파싱
         if (dateValue.includes('T')) {
           const date = new Date(dateValue)
           const year = date.getFullYear()
@@ -203,7 +180,6 @@ const StudentPage = () => {
           return `${year}-${month}-${day}`
         }
 
-        // 이미 YYYY-MM-DD 형식이면 그대로 반환
         if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
           return dateValue
         }
@@ -211,12 +187,10 @@ const StudentPage = () => {
         return dateValue
       }
 
-      // 학생 데이터를 폼 데이터 구조에 맞게 변환
       const formattedData = {
         name: student.name || '',
         school: student.school || '',
         grade: student.grade || '',
-        department: student.department || '',
         phone: student.phone || '',
         parentPhone: student.parentPhone || '',
         attendanceNumber: student.attendanceNumber || '',
@@ -225,14 +199,12 @@ const StudentPage = () => {
         birthDate: formatDateForInput(student.birthDate),
         address: student.address || '',
         notes: student.notes || '',
-        // 수강료와 클래스 정보
         selectedClasses: student.selectedClasses || [],
         classFee: student.classFee || 0,
         paymentDueDate: formatDateForInput(student.paymentDueDate),
         sendPaymentNotification: student.sendPaymentNotification !== undefined ? student.sendPaymentNotification : true,
         profileImage: student.profileImage || null,
         capturedImage: student.capturedImage || null,
-        // 자동 메시지 설정
         autoMessages: {
           attendance: student.autoMessages?.attendance !== undefined ? student.autoMessages.attendance : true,
           outing: student.autoMessages?.outing || false,
@@ -253,13 +225,13 @@ const StudentPage = () => {
   const handleCloseDialog = () => {
     setDialogOpen(false)
     setEditingStudent(null)
+    setFormError(null)
     resetForm()
   }
 
   const handleInputChange = (field) => (event) => {
     let value = event.target.type === 'checkbox' ? event.target.checked : event.target.value
 
-    // 전화번호 필드 자동 포맷팅
     if (field === 'phone' || field === 'parentPhone') {
       value = formatPhoneNumber(value)
     }
@@ -270,17 +242,16 @@ const StudentPage = () => {
         [field]: value
       }
 
-      // 강의 선택 시 비용 자동 설정 (다중 선택)
       if (field === 'selectedClasses') {
         const selectedClassesInfo = value.map(classId => mockClasses.find(c => c.id === classId)).filter(Boolean)
         const totalFee = selectedClassesInfo.reduce((sum, cls) => {
-          const fee = Number(cls.fee) || 0  // 문자열이든 숫자든 숫자로 변환
-          console.log('클래스:', cls.name, '비용:', fee)  // 디버그용 로그
+          const fee = Number(cls.fee) || 0
+          console.log('클래스:', cls.name, '비용:', fee)
           return sum + fee
         }, 0)
         const classNames = selectedClassesInfo.map(cls => cls.name).join(', ')
 
-        console.log('총 비용:', totalFee)  // 디버그용 로그
+        console.log('총 비용:', totalFee)
 
         newData.classFee = totalFee
         newData.class = classNames
@@ -369,6 +340,7 @@ const StudentPage = () => {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    setFormError(null)
 
     try {
       if (editingStudent) {
@@ -384,7 +356,10 @@ const StudentPage = () => {
       handleCloseDialog()
     } catch (error) {
       console.error('학생 저장 실패:', error)
-      // 에러는 LMSContext에서 alert로 처리됨
+
+      // 에러 메시지를 사용자에게 표시
+      const errorMessage = error.message || '학생 저장 중 오류가 발생했습니다.'
+      setFormError(errorMessage)
     }
   }
 
@@ -396,14 +371,11 @@ const StudentPage = () => {
         alert('학생이 삭제되었습니다.')
       } catch (error) {
         console.error('학생 삭제 실패:', error)
-        // 에러는 LMSContext에서 alert로 처리됨
       }
     }
   }
 
-  // 안전한 필터링 (undefined 방지)
   const filteredStudents = (students || []).filter(student => {
-    // 학생 데이터가 유효한지 확인
     if (!student || !student.name) {
       console.warn('⚠️ 잘못된 학생 데이터:', student);
       return false;
@@ -419,7 +391,6 @@ const StudentPage = () => {
     }
   })
 
-  // DataGrid 컬럼 정의
   const columns = [
     {
       field: 'profileImage',
@@ -479,19 +450,6 @@ const StudentPage = () => {
               {params.row.grade}학년
             </Typography>
           </Box>
-        )
-      }
-    },
-    {
-      field: 'department',
-      headerName: '학과',
-      width: 100,
-      minWidth: 80,
-      maxWidth: 150,
-      resizable: true,
-      renderCell: (params) => {
-        return (
-          <Chip label={params.value} size="small" color="secondary" />
         )
       }
     },
@@ -578,14 +536,11 @@ const StudentPage = () => {
       renderCell: (params) => {
         if (!params.value) return <Typography variant="body2" color="text.secondary" noWrap>-</Typography>
 
-        // ISO 날짜 형식이면 파싱
         let day
         if (params.value.includes('T')) {
-          // ISO 형식: 2025-01-29T15:00:00.000Z
           const date = new Date(params.value)
           day = date.getDate()
         } else if (params.value.includes('-')) {
-          // YYYY-MM-DD 형식
           day = params.value.split('-')[2]
         } else {
           day = params.value
@@ -631,7 +586,6 @@ const StudentPage = () => {
     }
   ]
 
-  // 로딩 상태 표시
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
@@ -643,7 +597,6 @@ const StudentPage = () => {
     )
   }
 
-  // 에러 상태 표시
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
@@ -673,7 +626,6 @@ const StudentPage = () => {
         </Button>
       </Box>
 
-      {/* 검색 및 필터 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container spacing={2} alignItems="center">
@@ -713,7 +665,6 @@ const StudentPage = () => {
         </CardContent>
       </Card>
 
-      {/* 학생 목록 DataGrid */}
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -734,15 +685,10 @@ const StudentPage = () => {
               disableRowSelectionOnClick
               getRowHeight={() => 60}
               autoHeight={false}
-              // 컬럼 드래그 앤 드롭 활성화
               disableColumnReorder={false}
-              // 컬럼 리사이징 활성화
               disableColumnResize={false}
-              // 컬럼 메뉴 활성화
               disableColumnMenu={false}
-              // 컬럼 필터 활성화
               disableColumnFilter={false}
-              // 컬럼 정렬 활성화
               disableColumnSort={false}
               sx={{
                 minWidth: 1200,
@@ -762,14 +708,12 @@ const StudentPage = () => {
                 '& .MuiDataGrid-columnHeader': {
                   whiteSpace: 'nowrap'
                 },
-                // 컬럼 경계선 스타일링
                 '& .MuiDataGrid-columnSeparator': {
                   display: 'block',
                   '&:hover': {
                     color: 'primary.main'
                   }
                 },
-                // 컬럼 헤더 드래그 가능 스타일
                 '& .MuiDataGrid-columnHeader:hover .MuiDataGrid-columnSeparator': {
                   visibility: 'visible'
                 }
@@ -795,7 +739,6 @@ const StudentPage = () => {
         </CardContent>
       </Card>
 
-      {/* 학생 추가/수정 다이얼로그 */}
       <DraggableDialog
         open={dialogOpen}
         onClose={(event, reason) => {
@@ -809,9 +752,13 @@ const StudentPage = () => {
         title={editingStudent ? '학생 정보 수정' : '새 학생 추가'}
       >
         <DialogContent>
+          {formError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setFormError(null)}>
+              {formError}
+            </Alert>
+          )}
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
             <Grid container spacing={2}>
-              {/* 좌측: 학생 정보 */}
               <Grid item xs={12} md={8}>
                 <Typography variant="h6" gutterBottom color="primary">
                   학생 정보
@@ -824,6 +771,15 @@ const StudentPage = () => {
                       value={formData.name}
                       onChange={handleInputChange('name')}
                       required
+                      disabled={!!editingStudent}
+                      sx={{
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          backgroundColor: '#f5f5f5',
+                          color: '#666',
+                          WebkitTextFillColor: '#666'
+                        }
+                      }}
+                      helperText={editingStudent ? '이름은 수정할 수 없습니다' : ''}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -843,22 +799,6 @@ const StudentPage = () => {
                       onChange={handleInputChange('grade')}
                       placeholder="3"
                     />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>학과</InputLabel>
-                      <Select
-                        value={formData.department}
-                        onChange={handleInputChange('department')}
-                        label="학과"
-                      >
-                        {mockDepartments.map((dept) => (
-                          <MenuItem key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -888,11 +828,18 @@ const StudentPage = () => {
                         pattern: '[0-9]*'
                       }}
                       onInput={(e) => {
-                        // 숫자만 입력되도록 필터링
                         e.target.value = e.target.value.replace(/[^0-9]/g, '');
                       }}
                       required
-                      helperText="4자리 숫자로 입력해주세요 (출결 인증용)"
+                      disabled={!!editingStudent}
+                      sx={{
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          backgroundColor: '#f5f5f5',
+                          color: '#666',
+                          WebkitTextFillColor: '#666'
+                        }
+                      }}
+                      helperText={editingStudent ? '출결번호는 수정할 수 없습니다' : '4자리 숫자로 입력해주세요 (출결 인증용)'}
                       placeholder="1234"
                     />
                   </Grid>
@@ -907,13 +854,12 @@ const StudentPage = () => {
                   </Grid>
                   <Grid item xs={12}>
                     <FormControl fullWidth>
-                      <InputLabel>강의 선택 * (다중 선택 가능)</InputLabel>
+                      <InputLabel>강의 선택 (다중 선택 가능)</InputLabel>
                       <Select
                         multiple
                         value={formData.selectedClasses}
                         onChange={handleInputChange('selectedClasses')}
-                        label="강의 선택 * (다중 선택 가능)"
-                        required
+                        label="강의 선택 (다중 선택 가능)"
                         renderValue={(selected) => (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                             {selected.map((value) => {
@@ -935,7 +881,6 @@ const StudentPage = () => {
                     </FormControl>
                   </Grid>
 
-                  {/* 선택된 강의 비용 표시 */}
                   {formData.selectedClasses.length > 0 && formData.classFee > 0 && (
                     <Grid item xs={12}>
                       <Alert severity="info">
@@ -953,7 +898,6 @@ const StudentPage = () => {
                     </Grid>
                   )}
 
-                  {/* 결제 정보 섹션 */}
                   <Grid item xs={12}>
                     <Divider sx={{ my: 2 }}>
                       <Typography variant="h6" color="primary">
@@ -999,7 +943,6 @@ const StudentPage = () => {
                     />
                   </Grid>
 
-                  {/* 자동 메시지 설정 섹션 */}
                   <Grid item xs={12}>
                     <Divider sx={{ my: 2 }}>
                       <Typography variant="h6" color="primary">
@@ -1054,7 +997,6 @@ const StudentPage = () => {
                       </Grid>
                     </Grid>
 
-                    {/* 학습관제 섹션 */}
                     <Grid container spacing={2} sx={{ mt: 1 }}>
                       <Grid item xs={12}>
                         <FormControlLabel
@@ -1104,7 +1046,6 @@ const StudentPage = () => {
                 </Grid>
               </Grid>
 
-              {/* 우측: 학생 사진 */}
               <Grid item xs={12} md={4}>
                 <Box sx={{ textAlign: 'center' }}>
                   <Typography variant="h6" gutterBottom color="primary">
@@ -1189,14 +1130,13 @@ const StudentPage = () => {
           <Button
             onClick={handleSubmit}
             variant="contained"
-            disabled={editingStudent ? false : (!formData.name || !formData.parentPhone || !formData.attendanceNumber || formData.attendanceNumber.length !== 4 || formData.selectedClasses.length === 0 || !formData.paymentDueDate)}
+            disabled={editingStudent ? false : (!formData.name || !formData.parentPhone || !formData.attendanceNumber || formData.attendanceNumber.length !== 4 || !formData.paymentDueDate)}
           >
             {editingStudent ? '수정' : '추가'}
           </Button>
         </DialogActions>
       </DraggableDialog>
 
-      {/* 사진 선택 옵션 다이얼로그 */}
       <DraggableDialog
         open={photoDialogOpen}
         onClose={(event, reason) => {
@@ -1235,7 +1175,6 @@ const StudentPage = () => {
         </DialogActions>
       </DraggableDialog>
 
-      {/* 카메라 촬영 다이얼로그 */}
       <DraggableDialog
         open={showCamera}
         onClose={(event, reason) => {

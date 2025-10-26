@@ -90,7 +90,6 @@ class StudentModel {
           name: student.name,
           school: student.school,
           grade: student.grade,
-          department: student.department,
           phone: student.phone,
           parentPhone: student.parent_phone,
           attendanceNumber: student.attendance_number,
@@ -179,7 +178,6 @@ class StudentModel {
         name: student.name,
         school: student.school,
         grade: student.grade,
-        department: student.department,
         phone: student.phone,
         parentPhone: student.parent_phone,
         attendanceNumber: student.attendance_number,
@@ -216,6 +214,16 @@ class StudentModel {
           ...basicData
         } = studentData;
 
+        // ✅ 학생 이름 중복 확인 (같은 학원 내에서)
+        const [existingStudent] = await conn.execute(
+          'SELECT id FROM students WHERE name = ? AND tenant_id = ? AND is_active = true',
+          [basicData.name, tenantId]
+        );
+
+        if (existingStudent.length > 0) {
+          throw new Error('이미 등록된 학생 이름입니다.');
+        }
+
         // 출결번호 생성 (중복 확인)
         let attendanceNumber = basicData.attendanceNumber;
         if (!attendanceNumber) {
@@ -241,10 +249,10 @@ class StudentModel {
             throw new Error('고유한 출결번호 생성에 실패했습니다.');
           }
         } else {
-          // 사용자가 제공한 출결번호 중복 확인 (활성 학생만)
+          // 사용자가 제공한 출결번호 중복 확인 (활성 학생만, 같은 학원 내에서)
           const [existing] = await conn.execute(
-            'SELECT id FROM students WHERE attendance_number = ? AND is_active = true',
-            [attendanceNumber]
+            'SELECT id FROM students WHERE attendance_number = ? AND tenant_id = ? AND is_active = true',
+            [attendanceNumber, tenantId]
           );
 
           if (existing.length > 0) {
@@ -255,11 +263,11 @@ class StudentModel {
         // 학생 기본 정보 삽입
         const insertQuery = `
           INSERT INTO students (
-            tenant_id, name, school, grade, department, phone, parent_phone, attendance_number, email,
+            tenant_id, name, school, grade, phone, parent_phone, attendance_number, email,
             birth_date, address, notes, payment_due_date, send_payment_notification,
             profile_image_url, auto_attendance_msg, auto_outing_msg,
             auto_image_msg, auto_study_monitoring, is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         const insertParams = [
@@ -267,7 +275,6 @@ class StudentModel {
           basicData.name,
           basicData.school || null,
           basicData.grade || null,
-          basicData.department || null,
           basicData.phone || null,
           basicData.parentPhone,
           attendanceNumber,
@@ -281,7 +288,8 @@ class StudentModel {
           autoMessages.attendance !== false,
           autoMessages.outing === true,
           autoMessages.imagePost === true,
-          autoMessages.studyMonitoring === true
+          autoMessages.studyMonitoring === true,
+          true // is_active
         ];
 
         const [insertResult] = await conn.execute(insertQuery, insertParams);
@@ -291,8 +299,8 @@ class StudentModel {
         if (selectedClasses.length > 0) {
           for (const lectureId of selectedClasses) {
             await conn.execute(
-              'INSERT INTO student_lectures (student_id, lecture_id) VALUES (?, ?)',
-              [studentId, lectureId]
+              'INSERT INTO student_lectures (student_id, lecture_id, tenant_id) VALUES (?, ?, ?)',
+              [studentId, lectureId, tenantId]
             );
           }
 
@@ -326,8 +334,8 @@ class StudentModel {
         return studentId;
       });
 
-      // 생성된 학생 정보 반환
-      return await this.getStudentById(result);
+      // 생성된 학생 정보 반환 (tenantId 전달!)
+      return await this.getStudentById(result, tenantId);
     } catch (error) {
       console.error('StudentModel.createStudent error:', error);
       throw error;
@@ -377,7 +385,7 @@ class StudentModel {
         // 학생 기본 정보 업데이트
         const updateQuery = `
           UPDATE students SET
-            name = ?, school = ?, grade = ?, department = ?, phone = ?,
+            name = ?, school = ?, grade = ?, phone = ?,
             parent_phone = ?, attendance_number = ?, email = ?, birth_date = ?, address = ?,
             notes = ?, payment_due_date = ?, send_payment_notification = ?,
             profile_image_url = ?, auto_attendance_msg = ?, auto_outing_msg = ?,
@@ -389,7 +397,6 @@ class StudentModel {
           basicData.name,
           basicData.school || null,
           basicData.grade || null,
-          basicData.department || null,
           basicData.phone || null,
           basicData.parentPhone,
           basicData.attendanceNumber || null,
@@ -431,8 +438,8 @@ class StudentModel {
               );
             } else {
               await conn.execute(
-                'INSERT INTO student_lectures (student_id, lecture_id) VALUES (?, ?)',
-                [id, lectureId]
+                'INSERT INTO student_lectures (student_id, lecture_id, tenant_id) VALUES (?, ?, ?)',
+                [id, lectureId, tenantId]
               );
             }
           }
@@ -471,8 +478,8 @@ class StudentModel {
         return id;
       });
 
-      // 수정된 학생 정보 반환
-      return await this.getStudentById(result);
+      // 수정된 학생 정보 반환 (tenantId 전달!)
+      return await this.getStudentById(result, tenantId);
     } catch (error) {
       console.error('StudentModel.updateStudent error:', error);
       throw error;
@@ -612,7 +619,6 @@ class StudentModel {
         name: student.name,
         school: student.school,
         grade: student.grade,
-        department: student.department,
         phone: student.phone,
         parentPhone: student.parent_phone,
         attendanceNumber: student.attendance_number,

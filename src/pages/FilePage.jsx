@@ -96,11 +96,52 @@ const FilePage = () => {
   })
   const [editingRows, setEditingRows] = useState(new Set())
   const [editedData, setEditedData] = useState({})
+  // ✅ DB에서 받은 출석 통계 데이터 저장
+  const [dbAttendanceStats, setDbAttendanceStats] = useState({
+    studentStats: [],
+    overallStats: null,
+    period: {}
+  })
 
-  // 실제 출석 데이터 분석
+  // 실제 출석 데이터 분석 (DB 데이터 사용)
   const generateAttendanceData = useMemo(() => {
     return () => {
       try {
+        console.log('📊 출석 데이터 생성 중...', {
+          dbAttendanceStats: dbAttendanceStats,
+          attendanceRecords: attendanceRecords.length,
+          hasDbData: dbAttendanceStats?.studentStats?.length > 0
+        })
+        
+        // ✅ DB에서 가져온 데이터가 있으면 형식을 변환해서 사용
+        if (dbAttendanceStats?.studentStats && dbAttendanceStats.studentStats.length > 0) {
+          console.log('✅ DB 데이터 사용 (변환 전):', dbAttendanceStats.studentStats)
+          
+          // 📌 DB 형식을 화면 형식으로 변환
+          const transformedStats = dbAttendanceStats.studentStats.map(stat => {
+            // ✅ attendance_rate를 안전하게 숫자로 변환
+            const rate = parseFloat(stat.attendance_rate) || 0
+            
+            return {
+              '학생명': stat.student_name || stat.studentName || '이름없음',
+              '총일수': stat.total_days || 0,
+              '출석일수': stat.present_days || 0,
+              '지각일수': stat.late_days || 0,
+              '조퇴일수': stat.early_leave_days || 0,
+              '결석일수': stat.absent_days || 0,
+              '출석률(%)': rate.toFixed(1)  // 안전하게 변환 후 소수점 처리
+            }
+          })
+          
+          console.log('✅ DB 데이터 변환 완료 (attendance_rate 안전 처리):', transformedStats)
+          return {
+            summary: transformedStats,
+            details: dbAttendanceStats.details || []
+          }
+        }
+        
+        // 📌 DB 데이터가 없으면 Context 데이터로 계산
+        console.log('📌 DB 데이터 없음, Context 데이터로 계산 중...')
         const startDate = new Date(reportDateRange.startDate)
         const endDate = new Date(reportDateRange.endDate)
 
@@ -246,11 +287,17 @@ const FilePage = () => {
     }
   }, [reportDateRange.startDate, reportDateRange.endDate, attendanceRecords, attendanceStudents])
 
-  // 출석 데이터 최적화
+  // 출석 데이터 최적화 (DB 데이터 포함)
   const attendanceData = useMemo(() => {
     if (!attendanceReportOpen) return { summary: [], details: [] }
+    
+    console.log('🔄 attendanceData 업데이트 중...', {
+      dbStatsSummary: dbAttendanceStats?.studentStats?.length,
+      contextRecords: attendanceRecords.length
+    })
+    
     return generateAttendanceData()
-  }, [attendanceReportOpen, generateAttendanceData, attendanceRecords, attendanceStudents])
+  }, [attendanceReportOpen, generateAttendanceData, attendanceRecords, attendanceStudents, dbAttendanceStats])
 
   // 임시 파일 데이터
   const mockFiles = [
@@ -369,9 +416,52 @@ const FilePage = () => {
     }
   }
 
+  // 출결 통계 데이터 로드 (DB에서 실제 데이터 가져오기)
+  const loadAttendanceStats = async () => {
+    try {
+      setLoading(true)
+      console.log('📊 출석 통계 데이터 로드 중...', {
+        startDate: reportDateRange.startDate,
+        endDate: reportDateRange.endDate
+      })
+
+      // ✅ AttendanceContext의 getAttendanceStats 함수 호출
+      const statsData = await attendanceContext.getAttendanceStats(
+        reportDateRange.startDate,
+        reportDateRange.endDate
+      )
+
+      console.log('✅ 출석 통계 데이터 로드 성공:', statsData)
+      
+      // 📌 받은 데이터를 상태에 저장 (화면에 반영되도록)
+      if (statsData && statsData.studentStats) {
+        setDbAttendanceStats({
+          studentStats: statsData.studentStats,
+          overallStats: statsData.overallStats,
+          details: statsData.details || [],
+          period: {
+            startDate: reportDateRange.startDate,
+            endDate: reportDateRange.endDate
+          }
+        })
+        console.log('💾 DB 데이터가 상태에 저장되었습니다')
+      }
+      
+      setLoading(false)
+    } catch (error) {
+      console.error('❌ 출석 통계 데이터 로드 실패:', error)
+      alert('출석 통계 데이터를 불러오는데 실패했습니다.')
+      setLoading(false)
+    }
+  }
+
   // 출결 통계 리포트 모달 열기
   const handleDownloadAttendanceReport = () => {
     setAttendanceReportOpen(true)
+    // 모달이 열렸을 때 DB에서 데이터 로드
+    setTimeout(() => {
+      loadAttendanceStats()
+    }, 100)
   }
 
   // 출결 통계 리포트 모달 닫기
@@ -380,13 +470,18 @@ const FilePage = () => {
   }
 
   // 출결 통계 데이터 새로고침
-  const handleRefreshAttendanceData = () => {
-    // 모달을 잠시 닫았다가 다시 열어서 데이터를 강제 갱신
-    setAttendanceReportOpen(false)
-    setTimeout(() => {
-      setAttendanceReportOpen(true)
-    }, 100)
+  const handleRefreshAttendanceData = async () => {
+    console.log('🔄 출석 통계 데이터 새로고침 중...')
+    await loadAttendanceStats()
   }
+
+  // 기간 변경 시 자동 새로고침
+  useEffect(() => {
+    if (attendanceReportOpen) {
+      console.log('📅 기간 변경 감지, 데이터 새로고침...')
+      loadAttendanceStats()
+    }
+  }, [reportDateRange.startDate, reportDateRange.endDate, attendanceReportOpen])
 
   // 엑셀 다운로드 실행
   const handleExcelDownload = async () => {
@@ -2443,11 +2538,33 @@ const FilePage = () => {
               <Typography variant="h6" gutterBottom>전체 출결 현황</Typography>
               <Grid container spacing={2}>
                 {(() => {
+                  // ✅ 배열을 안전하게 숫자로 변환하는 함수
+                  const safeNumber = (value) => {
+                    if (typeof value === 'number') return value
+                    if (Array.isArray(value)) return value[0] || 0
+                    if (typeof value === 'string') return parseInt(value) || 0
+                    return 0
+                  }
+
                   const totalStudents = attendanceData.summary.length
                   const avgAttendanceRate = totalStudents > 0 ?
                     (attendanceData.summary.reduce((sum, s) => sum + parseFloat(s['출석률(%)']), 0) / totalStudents).toFixed(1) : '0.0'
-                  const totalAbsent = attendanceData.summary.reduce((sum, s) => sum + s['결석일수'], 0)
-                  const totalLate = attendanceData.summary.reduce((sum, s) => sum + s['지각일수'], 0)
+                  
+                  // ✅ 배열값을 안전하게 처리
+                  const totalAbsent = attendanceData.summary.reduce((sum, s) => {
+                    return sum + safeNumber(s['결석일수'])
+                  }, 0)
+                  
+                  const totalLate = attendanceData.summary.reduce((sum, s) => {
+                    return sum + safeNumber(s['지각일수'])
+                  }, 0)
+
+                  console.log('💾 카드 데이터 (안전하게 처리됨):', {
+                    totalStudents,
+                    avgAttendanceRate,
+                    totalLate,
+                    totalAbsent
+                  })
 
                   return (
                     <>

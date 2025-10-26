@@ -470,6 +470,277 @@ const deleteMyTenant = async (req, res) => {
   }
 };
 
+/**
+ * SMS 충전 (관리자만 가능)
+ */
+const chargeSms = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const userId = req.user.id;
+    const { amount, price, paymentMethod, notes } = req.body;
+
+    // 입력값 검증
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMS 충전 건수를 입력해주세요.'
+      });
+    }
+
+    if (!price || price <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: '충전 금액을 입력해주세요.'
+      });
+    }
+
+    // 트랜잭션 시작
+    const { transaction } = require('../config/database');
+
+    await transaction(async (conn) => {
+      // 1. SMS 충전 내역 저장
+      await conn.execute(
+        `INSERT INTO sms_charges (tenant_id, amount, price, payment_method, charged_by, notes, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+        [tenantId, amount, price, paymentMethod || null, userId, notes || null]
+      );
+
+      // 2. 학원의 SMS 잔액 증가
+      await conn.execute(
+        `UPDATE tenants SET sms_balance = sms_balance + ?, updated_at = NOW() WHERE id = ?`,
+        [amount, tenantId]
+      );
+    });
+
+    // 3. 업데이트된 잔액 조회
+    const [tenants] = await query('SELECT sms_balance FROM tenants WHERE id = ?', [tenantId]);
+    const newBalance = tenants[0]?.sms_balance || 0;
+
+    res.json({
+      success: true,
+      message: `SMS ${amount}건이 충전되었습니다.`,
+      data: {
+        chargedAmount: amount,
+        newBalance: newBalance
+      }
+    });
+
+    console.log(`✅ SMS 충전 완료: tenant_id=${tenantId}, amount=${amount}, price=${price}, 새 잔액=${newBalance}`);
+
+  } catch (error) {
+    console.error('Charge SMS error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SMS 충전 중 오류가 발생했습니다.'
+    });
+  }
+};
+
+/**
+ * SMS 충전 내역 조회
+ */
+const getSmsChargeHistory = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // 충전 내역 조회
+    const charges = await query(
+      `SELECT
+        sc.id,
+        sc.amount,
+        sc.price,
+        sc.payment_method,
+        sc.notes,
+        sc.created_at,
+        u.name as charged_by_name
+       FROM sms_charges sc
+       LEFT JOIN users u ON sc.charged_by = u.id
+       WHERE sc.tenant_id = ?
+       ORDER BY sc.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [tenantId, parseInt(limit), offset]
+    );
+
+    // 전체 개수 조회
+    const [countResult] = await query(
+      'SELECT COUNT(*) as total FROM sms_charges WHERE tenant_id = ?',
+      [tenantId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        charges,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: countResult.total
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get SMS charge history error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SMS 충전 내역 조회 중 오류가 발생했습니다.'
+    });
+  }
+};
+
+/**
+ * SMS 사용 내역 조회
+ */
+const getSmsUsageHistory = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const { page = 1, limit = 20, startDate, endDate } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClauses = ['sl.tenant_id = ?'];
+    let params = [tenantId];
+
+    if (startDate && endDate) {
+      whereClauses.push('DATE(sl.sent_at) BETWEEN ? AND ?');
+      params.push(startDate, endDate);
+    }
+
+    const whereClause = whereClauses.join(' AND ');
+
+    // 사용 내역 조회
+    const logs = await query(
+      `SELECT
+        sl.id,
+        sl.phone_number,
+        sl.message_type,
+        sl.cost,
+        sl.status,
+        sl.sent_at,
+        s.name as student_name
+       FROM sms_logs sl
+       LEFT JOIN students s ON sl.student_id = s.id
+       WHERE ${whereClause}
+       ORDER BY sl.sent_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    // 전체 개수 조회
+    const [countResult] = await query(
+      `SELECT COUNT(*) as total FROM sms_logs sl WHERE ${whereClause}`,
+      params
+    );
+
+    res.json({
+      success: true,
+      data: {
+        logs,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: countResult.total
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get SMS usage history error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SMS 사용 내역 조회 중 오류가 발생했습니다.'
+    });
+  }
+};
+
+/**
+ * 개별 SMS 발송
+ */
+const sendIndividualSms = async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    const userId = req.user.id;
+    const { studentId, phoneNumber, message, messageType } = req.body;
+
+    // 입력값 검증
+    if (!phoneNumber || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMS 발송 정보가 누락되었습니다.'
+      });
+    }
+
+    if (message.length > 90) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMS는 최대 90자까지 입력 가능합니다.'
+      });
+    }
+
+    // SMS 잔액 확인
+    const [tenants] = await query('SELECT sms_balance FROM tenants WHERE id = ?', [tenantId]);
+
+    if (!tenants || tenants.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: '학원 정보를 찾을 수 없습니다.'
+      });
+    }
+
+    const smsBalance = tenants[0].sms_balance || 0;
+
+    if (smsBalance <= 0) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'INSUFFICIENT_SMS_BALANCE',
+          message: 'SMS 잔액이 부족합니다. SMS를 충전해주세요.'
+        }
+      });
+    }
+
+    // 트랜잭션으로 SMS 발송 처리
+    const { transaction } = require('../config/database');
+
+    await transaction(async (conn) => {
+      // 1. SMS 발송 로그 기록
+      await conn.execute(
+        `INSERT INTO sms_logs (tenant_id, student_id, phone_number, message, message_type, cost, status, sent_at)
+         VALUES (?, ?, ?, ?, ?, 1, 'sent', NOW())`,
+        [tenantId, studentId || null, phoneNumber, message, messageType || 'manual']
+      );
+
+      // 2. SMS 잔액 차감
+      await conn.execute(
+        'UPDATE tenants SET sms_balance = sms_balance - 1, updated_at = NOW() WHERE id = ?',
+        [tenantId]
+      );
+    });
+
+    // 3. 업데이트된 잔액 조회
+    const [updatedTenants] = await query('SELECT sms_balance FROM tenants WHERE id = ?', [tenantId]);
+    const newBalance = updatedTenants[0]?.sms_balance || 0;
+
+    res.json({
+      success: true,
+      message: 'SMS가 발송되었습니다.',
+      data: {
+        newBalance: newBalance
+      }
+    });
+
+    console.log(`✅ 개별 SMS 발송 완료: ${phoneNumber}, 잔액=${newBalance}`);
+
+  } catch (error) {
+    console.error('Send individual SMS error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SMS 발송 중 오류가 발생했습니다.'
+    });
+  }
+};
+
 module.exports = {
   getAllTenants,
   getTenantById,
@@ -477,5 +748,9 @@ module.exports = {
   deleteTenant,
   getMyTenant,
   updateMyTenant,
-  deleteMyTenant
+  deleteMyTenant,
+  chargeSms,
+  getSmsChargeHistory,
+  getSmsUsageHistory,
+  sendIndividualSms
 };

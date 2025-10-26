@@ -279,7 +279,6 @@ const registerAcademy = async (req, res) => {
   try {
     const {
       academyName,
-      academyCode,
       businessNumber,
       ownerName,
       phone,
@@ -291,26 +290,20 @@ const registerAcademy = async (req, res) => {
     } = req.body;
 
     // ✅ 입력값 검증
-    if (!academyName || !academyCode || !adminUsername || !adminPassword) {
+    if (!academyName || !adminUsername || !adminPassword) {
       return res.status(400).json({
         success: false,
         error: {
           code: 'VALIDATION_ERROR',
-          message: '필수 항목을 모두 입력해주세요. (학원명, 학원코드, 관리자ID, 비밀번호)'
+          message: '필수 항목을 모두 입력해주세요. (학원명, 관리자ID, 비밀번호)'
         }
       });
     }
 
-    // ✅ 학원코드 형식 검증 (영문, 숫자, 언더스코어만 허용)
-    if (!/^[a-zA-Z0-9_]+$/.test(academyCode)) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ACADEMY_CODE',
-          message: '학원코드는 영문, 숫자, 언더스코어(_)만 사용 가능합니다.'
-        }
-      });
-    }
+    // ✅ 학원코드 자동 생성 (프로그램에서 고유한 코드 생성)
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 10000);
+    const academyCode = `academy_${timestamp}_${randomNum}`;
 
     // ✅ 관리자 아이디 형식 검증
     if (!/^[a-zA-Z0-9_]+$/.test(adminUsername)) {

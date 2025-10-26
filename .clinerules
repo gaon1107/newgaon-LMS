@@ -1,0 +1,179 @@
+# newgaon-LMS 개발 규칙
+
+## 프로젝트 개요
+- 학원 관리 시스템 (LMS)
+- Multi-tenant 아키텍처 (tenant_id 기반)
+- 웹(React+Node.js) + 앱(Flutter) + 외부연동
+
+## 기술 스택
+### Backend
+- Node.js + Express.js
+- MySQL2 (Native, ORM 없음)
+- JWT 인증
+
+### Frontend
+- React (Vite) + TypeScript
+- Material-UI (@mui)
+- React Router v6
+
+### Database
+- MySQL 8.0
+- Multi-tenant (tenant_id로 데이터 분리)
+
+---
+
+## 🚨 필수 규칙
+
+### 1. tenant_id 필수 포함
+모든 SQL 쿼리에 tenant_id 조건 필수:
+```sql
+-- ✅ 올바른 예
+WHERE tenant_id = ? AND student_id = ?
+
+-- ❌ 금지
+WHERE student_id = ?
+```
+
+### 2. SQL Injection 방지
+항상 플레이스홀더(?) 사용:
+```javascript
+// ✅ 올바른 예
+const [rows] = await db.query(
+  'SELECT * FROM students WHERE tenant_id = ?', 
+  [tenantId]
+);
+
+// ❌ 금지
+const query = `SELECT * FROM students WHERE name = '${name}'`;
+```
+
+### 3. API 응답 형식 통일
+```javascript
+// 성공
+{ success: true, data: {...}, message: '성공' }
+
+// 실패
+{ success: false, error: '에러 메시지' }
+```
+
+### 4. 변수명 규칙
+- JavaScript: camelCase (studentId, instructorName)
+- SQL 컬럼: snake_case (student_id, created_at)
+- 함수명: 동사로 시작 (getStudents, createPayment)
+
+### 5. 파일 구조
+```
+backend/
+├── routes/         # API URL 정의
+├── controllers/    # 비즈니스 로직
+├── models/         # DB 쿼리
+└── middleware/     # 인증 등
+
+src/
+├── pages/          # 페이지 컴포넌트
+├── components/     # 재사용 컴포넌트
+└── services/
+    └── apiService.js  # 모든 API 호출
+```
+
+---
+
+## 📋 코드 수정 시 체크리스트
+
+### 수정 전 확인
+1. ✅ 어떤 파일을 수정하는가?
+2. ✅ 이 파일을 사용하는 다른 곳이 있는가?
+3. ✅ tenant_id 조건이 필요한가?
+4. ✅ SQL 쿼리가 안전한가?
+
+### 파일 삭제 전
+1. ✅ 전체 검색으로 import 확인 (Ctrl+Shift+F)
+2. ✅ server.js에서 라우터 등록 확인
+3. ✅ 임시로 이름 변경 후 테스트
+
+### 수정 후 테스트
+1. ✅ 로그인 작동
+2. ✅ 수정한 기능 작동
+3. ✅ 연관 기능 작동 (학생→강사→강의→출석)
+4. ✅ 다른 학원 데이터 안 보임
+
+---
+
+## 💡 자주 발생하는 오류
+
+### 패턴 1: tenant_id 누락
+```javascript
+// 문제: 다른 학원 데이터 조회됨
+// 해결: WHERE tenant_id = ? 추가
+```
+
+### 패턴 2: 공통 함수 수정 → 연쇄 오류
+```javascript
+// 문제: apiService.js 수정 후 여러 페이지 오류
+// 해결: 함수명 전체 검색 후 모든 호출 위치 수정
+```
+
+### 패턴 3: 파일 삭제 → import 오류
+```javascript
+// 문제: 컴포넌트 삭제 후 앱 안 켜짐
+// 해결: 삭제 전 파일명 검색, import 제거
+```
+
+---
+
+## 🎯 작업 프로세스
+
+### Claude Code 작업 시 필수 절차 (반드시 순서대로 진행)
+
+#### 1단계: 대화 시작 (필수)
+- [ ] `using-superpowers` 스킬 사용
+  - 모든 대화 시작 시 필수
+  - 스킬 찾기 및 사용 workflow 확립
+
+#### 2단계: 요구사항 분석 (코드 작성/수정 전 필수)
+- [ ] `brainstorming` 스킬 사용
+  - 코드 작성 전, 구현 계획 전 필수
+  - 아이디어를 체계적으로 정리
+- [ ] TodoWrite 도구 사용 (3개 이상 작업 시)
+  - 진행 상황 추적
+  - 각 작업 완료 시 즉시 상태 업데이트
+
+#### 3단계: 코드 작성
+- [ ] 영향도 파악
+- [ ] 관련 파일 찾기
+- [ ] Git 커밋 (필요 시)
+- [ ] 수정 실행
+
+#### 4단계: 검증 및 완료
+- [ ] `verification-before-completion` 스킬 사용
+  - 작업 완료 주장 전 필수
+  - 실제 검증 커맨드 실행 및 확인
+- [ ] 테스트 실행
+- [ ] 문제 발생 시 복구
+- [ ] 완료 보고
+
+### 절대 금지 사항
+- [금지] 이모지 사용 (사용자가 명시적으로 요청한 경우만 허용)
+- [금지] 스킬 사용 없이 바로 코드 작성
+- [금지] 검증 없이 "완료되었습니다" 주장
+- [금지] TodoWrite 없이 여러 파일 수정
+
+### 기술적 작업 프로세스
+
+1. 영향도 파악
+2. 관련 파일 찾기
+3. Git 커밋
+4. 수정 실행
+5. 테스트
+6. 문제 시 복구
+7. 완료
+
+---
+
+## 용어 통일
+- 학생: student
+- 강사: instructor
+- 강의: class
+- 출석: attendance
+- 결제: payment
+- 학원: tenant

@@ -6,7 +6,11 @@ const {
   deleteTenant,
   getMyTenant,
   updateMyTenant,
-  deleteMyTenant
+  deleteMyTenant,
+  chargeSms,
+  getSmsChargeHistory,
+  getSmsUsageHistory,
+  sendIndividualSms
 } = require('../controllers/tenantController');
 const { authenticateToken } = require('../middlewares/auth');
 
@@ -37,6 +41,34 @@ router.put('/me', updateMyTenant);
  * @access  Private
  */
 router.delete('/me', deleteMyTenant);
+
+/**
+ * @route   POST /api/tenants/me/sms/charge
+ * @desc    SMS 충전
+ * @access  Private (admin)
+ */
+router.post('/me/sms/charge', chargeSms);
+
+/**
+ * @route   GET /api/tenants/me/sms/charges
+ * @desc    SMS 충전 내역 조회
+ * @access  Private
+ */
+router.get('/me/sms/charges', getSmsChargeHistory);
+
+/**
+ * @route   GET /api/tenants/me/sms/usage
+ * @desc    SMS 사용 내역 조회
+ * @access  Private
+ */
+router.get('/me/sms/usage', getSmsUsageHistory);
+
+/**
+ * @route   POST /api/tenants/me/sms/send
+ * @desc    개별 SMS 발송
+ * @access  Private
+ */
+router.post('/me/sms/send', sendIndividualSms);
 
 /**
  * @route   GET /api/tenants

@@ -133,6 +133,11 @@ export const LMSProvider = ({ children }) => {
   // 학생 추가
   const addStudent = async (studentData) => {
     try {
+      // ✅ 프론트에서도 이름 공백 확인
+      if (!studentData.name || studentData.name.trim() === '') {
+        throw new Error('학생 이름을 입력해주세요.');
+      }
+
       // 빈 문자열을 null로 변환, 타입 변환 (백엔드 검증 통과용)
       const cleanedData = {
         ...studentData,
@@ -144,7 +149,6 @@ export const LMSProvider = ({ children }) => {
         notes: studentData.notes || null,
         school: studentData.school || null,
         grade: studentData.grade || null,
-        department: studentData.department || null,
         // Boolean 타입 명시적 변환 (DB에서 0/1로 올 수 있음)
         sendPaymentNotification: studentData.sendPaymentNotification === true || studentData.sendPaymentNotification === 1,
         // classFee를 숫자로 변환 (문자열로 올 수 있음)
@@ -163,27 +167,36 @@ export const LMSProvider = ({ children }) => {
         }
       }
 
-      // API 호출 시도
-      try {
-        const response = await studentService.createStudent(cleanedData)
-        // 백엔드 응답 구조: { success: true, data: { student: {...} } }
-        const newStudent = response.data?.student || response
-        setStudents(prev => [newStudent, ...prev])
-        console.log('✅ API로 학생 추가 성공:', newStudent)
-        return newStudent
-      } catch (apiError) {
-        console.log('⚠️ API 실패, 로컬에 저장')
-
-        // API 실패 시 로컬에 저장
-        const newStudent = {
-          ...cleanedData,
-          id: Date.now()
-        }
-        setStudents(prev => [newStudent, ...prev])
-        return newStudent
-      }
+      // API 호출 (에러 발생 시 바로 throw, 로컬 저장 안 함!)
+      const response = await studentService.createStudent(cleanedData)
+      // 백엔드 응답 구조: { success: true, data: { student: {...} } }
+      const newStudent = response.data?.student || response
+      setStudents(prev => [newStudent, ...prev])
+      console.log('✅ API로 학생 추가 성공:', newStudent)
+      return newStudent
     } catch (error) {
       console.error('❌ 학생 추가 실패:', error)
+
+      // 에러를 사용자에게 전달 (로컬 저장 절대 금지!)
+      if (error.response?.status === 409) {
+        const errorCode = error.response?.data?.error?.code
+        const errorMessage = error.response?.data?.error?.message
+
+        // 에러 코드에 따라 적절한 메시지 반환
+        if (errorCode === 'DUPLICATE_NAME') {
+          throw new Error(errorMessage || '이미 등록된 학생 이름입니다.')
+        } else if (errorCode === 'DUPLICATE_ATTENDANCE_NUMBER') {
+          throw new Error(errorMessage || '이미 사용 중인 출결번호입니다.')
+        } else {
+          throw new Error(errorMessage || '중복된 데이터가 있습니다.')
+        }
+      }
+
+      // 기타 에러 메시지 처리
+      if (error.response?.data?.error?.message) {
+        throw new Error(error.response.data.error.message)
+      }
+
       throw error
     }
   }
@@ -207,7 +220,6 @@ export const LMSProvider = ({ children }) => {
         notes: studentData.notes || null,
         school: studentData.school || null,
         grade: studentData.grade || null,
-        department: studentData.department || null,
         // Boolean 타입 명시적 변환 (DB에서 0/1로 올 수 있음)
         sendPaymentNotification: studentData.sendPaymentNotification === true || studentData.sendPaymentNotification === 1,
         // classFee를 숫자로 변환 (문자열로 올 수 있음)
@@ -230,31 +242,43 @@ export const LMSProvider = ({ children }) => {
       console.log('  - 정리 후 출결번호:', cleanedData.attendanceNumber)
       console.log('  - sendPaymentNotification:', cleanedData.sendPaymentNotification, '(type:', typeof cleanedData.sendPaymentNotification, ')')
 
-      // API 호출 시도
-      try {
-        console.log('🔍 [LMSContext] API 호출 전송할 데이터:', cleanedData)
-        const response = await studentService.updateStudent(studentId, cleanedData)
-        console.log('🔍 [LMSContext] 백엔드 응답 전체:', response)
-        console.log('🔍 [LMSContext] response.data:', response.data)
-        console.log('🔍 [LMSContext] response.data.student:', response.data?.student)
-        // 백엔드 응답 구조: { success: true, data: { student: {...} } }
-        const updatedStudent = response.data?.student || { ...cleanedData, id: studentId }
-        console.log('🔍 [LMSContext] 최종 업데이트할 학생 데이터:', updatedStudent)
-        console.log('🔍 [LMSContext] 최종 출결번호:', updatedStudent.attendanceNumber)
-        setStudents(prev => prev.map(student =>
-          student.id === studentId ? updatedStudent : student
-        ))
-        console.log('✅ API로 학생 수정 성공:', updatedStudent)
-      } catch (apiError) {
-        console.log('⚠️ API 실패, 로컬에서 수정')
-
-        // API 실패 시 로컬에서 수정
-        setStudents(prev => prev.map(student =>
-          student.id === studentId ? { ...cleanedData, id: studentId } : student
-        ))
-      }
+      // API 호출 (에러 발생 시 바로 throw, 로컬 저장 안 함!)
+      console.log('🔍 [LMSContext] API 호출 전송할 데이터:', cleanedData)
+      const response = await studentService.updateStudent(studentId, cleanedData)
+      console.log('🔍 [LMSContext] 백엔드 응답 전체:', response)
+      console.log('🔍 [LMSContext] response.data:', response.data)
+      console.log('🔍 [LMSContext] response.data.student:', response.data?.student)
+      // 백엔드 응답 구조: { success: true, data: { student: {...} } }
+      const updatedStudent = response.data?.student || { ...cleanedData, id: studentId }
+      console.log('🔍 [LMSContext] 최종 업데이트할 학생 데이터:', updatedStudent)
+      console.log('🔍 [LMSContext] 최종 출결번호:', updatedStudent.attendanceNumber)
+      setStudents(prev => prev.map(student =>
+        student.id === studentId ? updatedStudent : student
+      ))
+      console.log('✅ API로 학생 수정 성공:', updatedStudent)
     } catch (error) {
       console.error('❌ 학생 수정 실패:', error)
+
+      // 에러를 사용자에게 전달 (로컬 저장 절대 금지!)
+      if (error.response?.status === 409) {
+        const errorCode = error.response?.data?.error?.code
+        const errorMessage = error.response?.data?.error?.message
+
+        // 에러 코드에 따라 적절한 메시지 반환
+        if (errorCode === 'DUPLICATE_NAME') {
+          throw new Error(errorMessage || '이미 등록된 학생 이름입니다.')
+        } else if (errorCode === 'DUPLICATE_ATTENDANCE_NUMBER') {
+          throw new Error(errorMessage || '이미 사용 중인 출결번호입니다.')
+        } else {
+          throw new Error(errorMessage || '중복된 데이터가 있습니다.')
+        }
+      }
+
+      // 기타 에러 메시지 처리
+      if (error.response?.data?.error?.message) {
+        throw new Error(error.response.data.error.message)
+      }
+
       throw error
     }
   }
@@ -262,17 +286,10 @@ export const LMSProvider = ({ children }) => {
   // 학생 삭제
   const deleteStudent = async (studentId) => {
     try {
-      // API 호출 시도
-      try {
-        await studentService.deleteStudent(studentId)
-        setStudents(prev => prev.filter(student => student.id !== studentId))
-        console.log('✅ API로 학생 삭제 성공')
-      } catch (apiError) {
-        console.log('⚠️ API 실패, 로컬에서 삭제')
-        
-        // API 실패 시 로컬에서 삭제
-        setStudents(prev => prev.filter(student => student.id !== studentId))
-      }
+      // API 호출 (에러 발생 시 바로 throw)
+      await studentService.deleteStudent(studentId)
+      setStudents(prev => prev.filter(student => student.id !== studentId))
+      console.log('✅ API로 학생 삭제 성공')
     } catch (error) {
       console.error('❌ 학생 삭제 실패:', error)
       throw error

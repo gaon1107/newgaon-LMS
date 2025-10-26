@@ -24,7 +24,6 @@ const RegisterPage = () => {
   const { login: loginUser } = useContext(AuthContext)
   const [formData, setFormData] = useState({
     academyName: '',
-    academyCode: '', // 학원코드 추가
     ownerName: '',
     businessNumber: '',
     phone: '',
@@ -73,7 +72,6 @@ const RegisterPage = () => {
     const newErrors = {}
 
     if (!formData.academyName.trim()) newErrors.academyName = '학원명을 입력해주세요'
-    if (!formData.academyCode.trim()) newErrors.academyCode = '학원코드를 입력해주세요'
     if (!formData.ownerName.trim()) newErrors.ownerName = '대표자명을 입력해주세요'
     if (!formData.phone.trim()) newErrors.phone = '연락처를 입력해주세요'
     if (!formData.email.trim()) newErrors.email = '이메일을 입력해주세요'
@@ -86,10 +84,7 @@ const RegisterPage = () => {
     if (!formData.agreeTerms) newErrors.agreeTerms = '이용약관에 동의해주세요'
     if (!formData.agreePrivacy) newErrors.agreePrivacy = '개인정보처리방침에 동의해주세요'
 
-    // 학원코드 형식 검증
-    if (formData.academyCode && !/^[a-zA-Z0-9_]+$/.test(formData.academyCode)) {
-      newErrors.academyCode = '학원코드는 영문, 숫자, 언더스코어(_)만 사용 가능합니다'
-    }
+
 
     // 이메일 형식 검증
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
@@ -117,7 +112,6 @@ const RegisterPage = () => {
       // API 요청 데이터 준비
       const registrationData = {
         academyName: formData.academyName,
-        academyCode: formData.academyCode,
         businessNumber: formData.businessNumber ? unformatBusinessNumber(formData.businessNumber) : null,
         ownerName: formData.ownerName,
         phone: unformatPhoneNumber(formData.phone),
@@ -220,17 +214,7 @@ const RegisterPage = () => {
                 helperText={errors.academyName}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="학원코드 *"
-                value={formData.academyCode}
-                onChange={handleInputChange('academyCode')}
-                error={!!errors.academyCode}
-                helperText={errors.academyCode || "영문, 숫자, 언더스코어(_)만 사용 가능"}
-                placeholder="예: newgaon1"
-              />
-            </Grid>
+
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -307,6 +291,7 @@ const RegisterPage = () => {
                 onChange={handleInputChange('username')}
                 error={!!errors.username}
                 helperText={errors.username}
+                autoComplete="off"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -318,6 +303,7 @@ const RegisterPage = () => {
                 onChange={handleInputChange('password')}
                 error={!!errors.password}
                 helperText={errors.password}
+                autoComplete="new-password"
               />
             </Grid>
             <Grid item xs={12}>
@@ -329,6 +315,7 @@ const RegisterPage = () => {
                 onChange={handleInputChange('confirmPassword')}
                 error={!!errors.confirmPassword}
                 helperText={errors.confirmPassword}
+                autoComplete="new-password"
               />
             </Grid>
           </Grid>

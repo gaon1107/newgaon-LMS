@@ -117,9 +117,9 @@ const DashboardHeader = ({ user }) => {
         {/* 사용자 환영 메시지 및 새로고침 버튼 */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" sx={{ fontWeight: 300 }}>
-            안녕하세요, {user?.name || '관리자'}님
+            안녕하세요, {tenantData?.academyName || user?.name || '관리자'}님
           </Typography>
-          <IconButton 
+          <IconButton
             onClick={fetchTenantData}
             sx={{ color: 'white', '&:hover': { backgroundColor: 'rgba(255,255,255,0.2)' } }}
             title="데이터 새로고침"
