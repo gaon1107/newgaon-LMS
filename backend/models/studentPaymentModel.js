@@ -13,22 +13,39 @@ class StudentPaymentModel {
           s.name as student_name,
           s.student_number,
           s.grade,
-          COALESCE(SUM(sp.amount), 0) as total_paid,
+          COALESCE(lecture_fees.total_fee, 0) as should_pay,
+          COALESCE(payments.total_paid, 0) as total_paid,
           CASE
-            WHEN SUM(sp.amount) > 0 THEN '완납'
+            WHEN COALESCE(lecture_fees.total_fee, 0) = 0 THEN '수강 강의 없음'
+            WHEN COALESCE(payments.total_paid, 0) >= COALESCE(lecture_fees.total_fee, 0) THEN '완납'
+            WHEN COALESCE(payments.total_paid, 0) > 0 THEN '일부납부'
             ELSE '미납'
           END as payment_status
         FROM students s
-        LEFT JOIN student_payments sp ON s.id = sp.student_id
-          AND sp.tenant_id = ?
-          AND sp.payment_month = ?
-          AND sp.is_active = true
+        LEFT JOIN (
+          SELECT
+            sl.student_id,
+            SUM(l.fee) as total_fee
+          FROM student_lectures sl
+          INNER JOIN lectures l ON sl.lecture_id = l.id
+            AND l.tenant_id = ?
+            AND l.is_active = true
+          WHERE sl.tenant_id = ? AND sl.is_active = true
+          GROUP BY sl.student_id
+        ) lecture_fees ON s.id = lecture_fees.student_id
+        LEFT JOIN (
+          SELECT
+            student_id,
+            SUM(amount) as total_paid
+          FROM student_payments
+          WHERE tenant_id = ? AND payment_month = ? AND is_active = true
+          GROUP BY student_id
+        ) payments ON s.id = payments.student_id
         WHERE s.tenant_id = ? AND s.is_active = true
-        GROUP BY s.id, s.name, s.student_number, s.grade
         ORDER BY s.name
       `;
 
-      const payments = await query(paymentsQuery, [tenantId, yearMonth, tenantId]);
+      const payments = await query(paymentsQuery, [tenantId, tenantId, tenantId, yearMonth, tenantId]);
       return payments;
 
     } catch (error) {
@@ -82,16 +99,13 @@ class StudentPaymentModel {
         SELECT DISTINCT
           l.id,
           l.name as lecture_name,
-          l.price as lecture_price,
-          l.start_date,
-          l.end_date,
+          l.fee as lecture_price,
           l.schedule
         FROM lectures l
-        INNER JOIN (
-          SELECT DISTINCT lecture_id
-          FROM student_payments
-          WHERE tenant_id = ? AND student_id = ? AND is_active = true
-        ) sp ON l.id = sp.lecture_id
+        INNER JOIN student_lectures sl ON l.id = sl.lecture_id
+          AND sl.tenant_id = ?
+          AND sl.student_id = ?
+          AND sl.is_active = true
         WHERE l.tenant_id = ? AND l.is_active = true
         ORDER BY l.name
       `;

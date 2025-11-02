@@ -537,13 +537,78 @@ const FilePage = () => {
   }
 
   // 수납현황 모달 열기
-  const handleOpenPaymentStatus = () => {
+  const handleOpenPaymentStatus = async () => {
     setPaymentStatusOpen(true)
+    // 초기화
+    setPaymentSearchStudent('')
+    setSelectedStudentPaymentInfo(null)
+    // 당월 전체 학생 납부 현황 로드
+    await loadCurrentMonthPayments()
   }
 
   // 수납현황 모달 닫기
   const handleClosePaymentStatus = () => {
     setPaymentStatusOpen(false)
+    setCurrentMonthPayments([])
+    setSelectedStudentPaymentInfo(null)
+  }
+
+  // 당월 전체 학생 납부 현황 조회
+  const loadCurrentMonthPayments = async () => {
+    setPaymentLoading(true)
+    try {
+      const today = new Date()
+      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+
+      const response = await studentPaymentService.getCurrentMonthPayments(currentMonth)
+
+      if (response.success) {
+        setCurrentMonthPayments(response.data.payments)
+        console.log('✅ 당월 납부 현황 로드 성공:', response.data.payments)
+      }
+    } catch (error) {
+      console.error('❌ 당월 납부 현황 로드 실패:', error)
+      alert('당월 납부 현황을 불러오는 중 오류가 발생했습니다.')
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
+  // 학생 검색 및 납부 정보 조회
+  const handlePaymentSearch = async () => {
+    if (!paymentSearchStudent) {
+      alert('학생 이름을 입력해주세요.')
+      return
+    }
+
+    setPaymentLoading(true)
+    try {
+      // 학생 이름으로 ID 찾기
+      const student = attendanceStudents.find(s => s.name === paymentSearchStudent)
+
+      if (!student) {
+        alert('해당 학생을 찾을 수 없습니다.')
+        setPaymentLoading(false)
+        return
+      }
+
+      // 학생의 납부 정보 조회
+      const response = await studentPaymentService.getStudentPaymentInfo(
+        student.id,
+        paymentStartMonth,
+        paymentEndMonth
+      )
+
+      if (response.success) {
+        setSelectedStudentPaymentInfo(response.data)
+        console.log('✅ 학생 납부 정보 조회 성공:', response.data)
+      }
+    } catch (error) {
+      console.error('❌ 학생 납부 정보 조회 실패:', error)
+      alert('학생 납부 정보를 불러오는 중 오류가 발생했습니다.')
+    } finally {
+      setPaymentLoading(false)
+    }
   }
 
   // 출결 통계 데이터 새로고침
@@ -2854,104 +2919,229 @@ const FilePage = () => {
         </DialogTitle>
         <DialogContent>
           <Stack spacing={3}>
-            {/* 학생 검색 */}
+            {/* 검색 조건 */}
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>학생 검색</Typography>
-              <TextField
-                fullWidth
-                label="학생명 입력"
-                placeholder="검색할 학생명을 입력하세요"
-                InputLabelProps={{ shrink: true }}
-              />
+              <Typography variant="h6" gutterBottom>검색 조건</Typography>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="학생명 입력"
+                    placeholder="학생명 입력"
+                    value={paymentSearchStudent}
+                    onChange={(e) => setPaymentSearchStudent(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    fullWidth
+                    type="month"
+                    label="시작 월"
+                    value={paymentStartMonth}
+                    onChange={(e) => setPaymentStartMonth(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    fullWidth
+                    type="month"
+                    label="종료 월"
+                    value={paymentEndMonth}
+                    onChange={(e) => setPaymentEndMonth(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={2}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={handlePaymentSearch}
+                    disabled={paymentLoading}
+                  >
+                    검색
+                  </Button>
+                </Grid>
+              </Grid>
             </Paper>
 
-            {/* 당월 납부 현황 */}
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>당월 납부 현황</Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>학생명</TableCell>
-                      <TableCell>학년</TableCell>
-                      <TableCell>납부 상태</TableCell>
-                      <TableCell>납부일</TableCell>
-                      <TableCell>납부 금액</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          학생을 검색하여 수납 현황을 확인하세요
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
+            {/* 전체 학생 이번 달 납부 여부 (검색 전 표시) */}
+            {!selectedStudentPaymentInfo && (
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>전체 학생 이번 달 납부 현황</Typography>
+                {paymentLoading ? (
+                  <Box sx={{ textAlign: 'center', py: 3 }}>
+                    <LinearProgress />
+                  </Box>
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>학생명</TableCell>
+                          <TableCell>학년</TableCell>
+                          <TableCell>수강료</TableCell>
+                          <TableCell align="right">납부 금액</TableCell>
+                          <TableCell>납부 상태</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {currentMonthPayments.length > 0 ? (
+                          currentMonthPayments.map((payment) => (
+                            <TableRow key={payment.student_id}>
+                              <TableCell>{payment.student_name}</TableCell>
+                              <TableCell>{payment.grade || '-'}</TableCell>
+                              <TableCell>
+                                {parseInt(payment.should_pay || 0).toLocaleString()}원
+                              </TableCell>
+                              <TableCell align="right">
+                                {parseInt(payment.total_paid || 0).toLocaleString()}원
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={payment.payment_status}
+                                  color={
+                                    payment.payment_status === '완납' ? 'success' :
+                                    payment.payment_status === '일부납부' ? 'warning' :
+                                    payment.payment_status === '수강 강의 없음' ? 'default' :
+                                    'error'
+                                  }
+                                  size="small"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={5} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                데이터가 없습니다
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Paper>
+            )}
 
-            {/* 선택한 학생의 상세 정보 */}
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>학생 상세 정보</Typography>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                학생을 선택하면 과거 수납 이력, 수납 방식, 신청 강의 및 수강료를 확인할 수 있습니다.
-              </Alert>
+            {/* 선택한 학생의 상세 정보 (검색 후 표시) */}
+            {selectedStudentPaymentInfo && (
+              <>
+                {/* 전체 목록으로 돌아가기 버튼 */}
+                <Box sx={{ mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      setSelectedStudentPaymentInfo(null)
+                      setPaymentSearchStudent('')
+                      loadCurrentMonthPayments()
+                    }}
+                    startIcon={<RefreshIcon />}
+                  >
+                    전체 목록으로 돌아가기
+                  </Button>
+                </Box>
 
-              {/* 신청 강의 및 수강료 */}
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ mt: 2 }}>
-                신청 강의
-              </Typography>
-              <TableContainer sx={{ mb: 3 }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>강의명</TableCell>
-                      <TableCell>수강료</TableCell>
-                      <TableCell>시작일</TableCell>
-                      <TableCell>종료일</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          데이터 없음
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                {/* 학생 정보 */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    학생 정보
+                  </Typography>
+                  <Alert severity="info">
+                    {attendanceStudents.find(s => s.id === selectedStudentPaymentInfo.studentId)?.name || '학생'} -
+                    기간: {paymentStartMonth} ~ {paymentEndMonth}
+                  </Alert>
+                </Paper>
 
-              {/* 과거 수납 이력 */}
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                과거 수납 이력
-              </Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>납부일</TableCell>
-                      <TableCell>납부 금액</TableCell>
-                      <TableCell>납부 방식</TableCell>
-                      <TableCell>강의명</TableCell>
-                      <TableCell>비고</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          데이터 없음
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
+                {/* 신청 강의 및 수강료 */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    신청 강의
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>강의명</TableCell>
+                          <TableCell align="right">수강료</TableCell>
+                          <TableCell>일정</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedStudentPaymentInfo.lectures && selectedStudentPaymentInfo.lectures.length > 0 ? (
+                          selectedStudentPaymentInfo.lectures.map((lecture) => (
+                            <TableRow key={lecture.id}>
+                              <TableCell>{lecture.lecture_name}</TableCell>
+                              <TableCell align="right">
+                                {parseInt(lecture.lecture_price || 0).toLocaleString()}원
+                              </TableCell>
+                              <TableCell>{lecture.schedule || '-'}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={3} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                신청한 강의가 없습니다
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+
+                {/* 납부 이력 (기간별) */}
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    납부 이력
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>납부일</TableCell>
+                          <TableCell>납부 월</TableCell>
+                          <TableCell align="right">납부 금액</TableCell>
+                          <TableCell>납부 방식</TableCell>
+                          <TableCell>강의명</TableCell>
+                          <TableCell>비고</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedStudentPaymentInfo.paymentHistory && selectedStudentPaymentInfo.paymentHistory.length > 0 ? (
+                          selectedStudentPaymentInfo.paymentHistory.map((history) => (
+                            <TableRow key={history.id}>
+                              <TableCell>{history.payment_date}</TableCell>
+                              <TableCell>{history.payment_month}</TableCell>
+                              <TableCell align="right">
+                                {parseInt(history.amount).toLocaleString()}원
+                              </TableCell>
+                              <TableCell>{history.payment_method}</TableCell>
+                              <TableCell>{history.lecture_name || '-'}</TableCell>
+                              <TableCell>{history.notes || '-'}</TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={6} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                납부 이력이 없습니다
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions>
