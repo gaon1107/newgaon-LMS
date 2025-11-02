@@ -85,6 +85,7 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/payments', require('./routes/payments'));
+app.use('/api/student-payments', require('./routes/studentPayments')); // 학생 수강료 납부 관리
 app.use('/api/tenants', require('./routes/tenants')); // 슈퍼관리자용 학원 관리
 // app.use('/api/announcements', require('./routes/announcements')); // 추후 구현 예정
 

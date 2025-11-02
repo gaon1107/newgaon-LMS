@@ -457,4 +457,41 @@ export const tenantService = {
   }
 }
 
+// 학생 수강료 납부 관리 API
+export const studentPaymentService = {
+  // 당월 전체 학생 납부 현황 조회
+  getCurrentMonthPayments: async (yearMonth) => {
+    const response = await apiClient.get('/student-payments/current-month', {
+      params: { yearMonth }
+    })
+    return response.data
+  },
+
+  // 특정 학생의 납부 내역 + 신청 강의 조회
+  getStudentPaymentInfo: async (studentId, startMonth, endMonth) => {
+    const response = await apiClient.get(`/student-payments/student/${studentId}`, {
+      params: { startMonth, endMonth }
+    })
+    return response.data
+  },
+
+  // 납부 추가
+  createPayment: async (paymentData) => {
+    const response = await apiClient.post('/student-payments', paymentData)
+    return response.data
+  },
+
+  // 납부 수정
+  updatePayment: async (paymentId, paymentData) => {
+    const response = await apiClient.put(`/student-payments/${paymentId}`, paymentData)
+    return response.data
+  },
+
+  // 납부 삭제
+  deletePayment: async (paymentId) => {
+    const response = await apiClient.delete(`/student-payments/${paymentId}`)
+    return response.data
+  }
+}
+
 export default apiClient

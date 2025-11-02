@@ -95,15 +95,39 @@ export const AttendanceProvider = ({ children }) => {
         const todayAttendance = response.data.attendance || []
         console.log('✅ 출석 데이터 로딩 성공:', todayAttendance)
         
-        // 학생 ID별로 출석 상태를 매핑
+        // ✅ 학생 ID별로 출석 상태를 매핑
+        // 한 학생이 하루에 여러 번 출입(등원→외출→복귀→하원)하므로
+        // 첫 등원 시간 + 마지막 하원 시간 + 현재 상태(마지막 레코드)를 결합
         const attendanceMap = {}
+
+        // 학생별로 레코드 그룹화
+        const recordsByStudent = {}
         todayAttendance.forEach(record => {
-          attendanceMap[record.student_id] = {
-            status: record.status,
-            checkInTime: record.check_in_time,
-            checkOutTime: record.check_out_time,
-            notes: record.notes,
-            lastUpdate: record.created_at
+          if (!recordsByStudent[record.student_id]) {
+            recordsByStudent[record.student_id] = []
+          }
+          recordsByStudent[record.student_id].push(record)
+        })
+
+        // 각 학생의 첫 등원 + 마지막 하원 추출
+        Object.keys(recordsByStudent).forEach(studentId => {
+          const records = recordsByStudent[studentId]
+
+          // 첫 번째 등원 찾기 (present, late)
+          const firstCheckIn = records.find(r => ['present', 'late'].includes(r.status))
+
+          // 마지막 하원 찾기 (left, early_leave)
+          const lastCheckOut = [...records].reverse().find(r => ['left', 'early_leave'].includes(r.status))
+
+          // 가장 최근 레코드 (현재 상태 판단용)
+          const lastRecord = records[records.length - 1]
+
+          attendanceMap[studentId] = {
+            status: lastRecord.status, // 마지막 상태가 현재 상태
+            checkInTime: firstCheckIn ? firstCheckIn.check_in_time : null,
+            checkOutTime: lastCheckOut ? lastCheckOut.check_out_time : null,
+            notes: lastRecord.notes,
+            lastUpdate: lastRecord.created_at
           }
         })
         

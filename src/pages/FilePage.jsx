@@ -53,6 +53,7 @@ import {
 import * as XLSX from 'xlsx'
 import { useLMS } from '../contexts/LMSContext'
 import { useAttendance } from '../contexts/AttendanceContext'
+import { studentPaymentService } from '../services/apiService'
 import {
   BarChart,
   Bar,
@@ -90,6 +91,19 @@ const FilePage = () => {
   const [studentTemplateOpen, setStudentTemplateOpen] = useState(false)
   const [attendanceReportOpen, setAttendanceReportOpen] = useState(false)
   const [paymentStatusOpen, setPaymentStatusOpen] = useState(false)
+  // 수납현황 관련 state
+  const [paymentSearchStudent, setPaymentSearchStudent] = useState('') // 학생 검색어
+  const [paymentStartMonth, setPaymentStartMonth] = useState(() => {
+    const today = new Date()
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [paymentEndMonth, setPaymentEndMonth] = useState(() => {
+    const today = new Date()
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [currentMonthPayments, setCurrentMonthPayments] = useState([]) // 전체 학생 당월 납부 현황
+  const [selectedStudentPaymentInfo, setSelectedStudentPaymentInfo] = useState(null) // 선택한 학생 납부 정보
+  const [paymentLoading, setPaymentLoading] = useState(false)
   // ✅ 수정: 기본값을 이번 달 1일부터 오늘까지로 명확하게 설정
   const [reportDateRange, setReportDateRange] = useState(() => {
     const today = new Date()
