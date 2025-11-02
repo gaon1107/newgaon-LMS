@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useAttendance } from '../contexts/AttendanceContext'
+import { attendanceService } from '../services/apiService'
 import {
   Box,
   Typography,
@@ -34,22 +34,64 @@ import { ko } from 'date-fns/locale'
 import { format } from 'date-fns'
 
 const AttendanceDailyPage = () => {
-  const { attendanceRecords } = useAttendance()
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [loading, setLoading] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentHistory, setStudentHistory] = useState([])
-
-
+  const [attendanceRecords, setAttendanceRecords] = useState([])
 
   useEffect(() => {
-    // Context에서 데이터를 바로 사용하므로 별도 로딩 불필요
-    setLoading(false)
-  }, [selectedDate, attendanceRecords])
+    loadAttendanceData()
+  }, [selectedDate])
 
   const loadAttendanceData = async () => {
-    // Context에서 데이터를 사용하므로 별도 로딩 불필요
-    setLoading(false)
+    setLoading(true)
+    try {
+      const dateStr = format(selectedDate, 'yyyy-MM-dd')
+      console.log('📅 일별 출석 데이터 로딩:', dateStr)
+
+      const response = await attendanceService.getAttendance(dateStr)
+
+      if (response.success) {
+        const records = response.data.attendance || []
+        console.log('✅ 출석 데이터 로딩 성공:', records.length, '건')
+        console.log('📋 데이터 샘플:', records[0])
+
+        // 데이터 구조 변환
+        const transformedRecords = records.map(record => {
+          // 태그시각: date + check_in_time 또는 check_out_time 조합
+          let taggedAt = record.created_at
+          if (record.check_in_time && record.date) {
+            taggedAt = `${record.date.split('T')[0]}T${record.check_in_time}`
+          } else if (record.check_out_time && record.date) {
+            taggedAt = `${record.date.split('T')[0]}T${record.check_out_time}`
+          }
+
+          return {
+            id: record.id,
+            studentName: record.student_name,
+            className: record.lecture_name || '학원',
+            stateDescription: getStatusLabel(record.status),
+            taggedAt: taggedAt,
+            isKeypad: null,
+            isForced: false,
+            comment: record.notes || '',
+            thumbnailData: null
+          }
+        })
+
+        console.log('🔄 변환된 데이터:', transformedRecords)
+        setAttendanceRecords(transformedRecords)
+      } else {
+        console.error('❌ 출석 데이터 로딩 실패:', response.error)
+        setAttendanceRecords([])
+      }
+    } catch (error) {
+      console.error('❌ 출석 데이터 로딩 오류:', error)
+      setAttendanceRecords([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleRefresh = () => {
@@ -59,6 +101,19 @@ const AttendanceDailyPage = () => {
   const handleCloseHistory = () => {
     setSelectedStudent(null)
     setStudentHistory([])
+  }
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'present': return '등원'
+      case 'absent': return '미등원'
+      case 'late': return '지각'
+      case 'early_leave': return '조퇴'
+      case 'out': return '외출'
+      case 'returned': return '복귀'
+      case 'left': return '하원'
+      default: return status
+    }
   }
 
   const getStatusColor = (type) => {
@@ -73,7 +128,8 @@ const AttendanceDailyPage = () => {
   }
 
 
-  // 학생별로 마지막 상태만 추출하는 함수
+  // ✅ 수정: 학생별 최신 상태를 보여주는 함수 (그리드용)
+  // 각 학생의 가장 최근 출입 기록을 표시
   const getStudentLatestStatus = () => {
     const studentMap = new Map()
 
@@ -82,7 +138,7 @@ const AttendanceDailyPage = () => {
       new Date(b.taggedAt) - new Date(a.taggedAt)
     )
 
-    // 각 학생의 가장 최근 기록만 저장
+    // 각 학생의 가장 최근 기록만 저장 (그리드 표시용)
     sortedRecords.forEach(record => {
       if (!studentMap.has(record.studentName)) {
         studentMap.set(record.studentName, record)
@@ -93,7 +149,9 @@ const AttendanceDailyPage = () => {
   }
 
   const getTotalCount = () => {
-    return getStudentLatestStatus().length
+    // ✅ 총 학생 수 (중복 제거)
+    const uniqueStudents = new Set(attendanceRecords.map(r => r.studentName))
+    return uniqueStudents.size
   }
 
   const handleStudentSelect = (studentName) => {

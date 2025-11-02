@@ -119,37 +119,34 @@ router.put('/:studentId', [
       if (lecture.length === 0) return res.status(404).json({ success: false, error: { code: 'LECTURE_NOT_FOUND' } });
     }
 
-    let existing;
-    if (lectureId) {
-      [existing] = await db.execute('SELECT id FROM attendance WHERE tenant_id = ? AND student_id = ? AND lecture_id = ? AND date = ?', 
-        [tenant_id, studentId, lectureId, date]);
-    } else {
-      [existing] = await db.execute('SELECT id FROM attendance WHERE tenant_id = ? AND student_id = ? AND lecture_id IS NULL AND date = ?', 
-        [tenant_id, studentId, date]);
+    // ✅ 수정: UPDATE 대신 항상 INSERT 사용
+    // 이유: 한 학생이 하루에 여러 번의 출입 기록(등원, 외출, 복귀, 하원)을 남길 수 있도록 변경
+    // 등원(1번) → 외출/복귀(여러번) → 하원(1번)
+    
+    // 시간 설정: 등원/지각은 check_in_time, 하원/조퇴는 check_out_time
+    let finalCheckInTime = checkInTime;
+    let finalCheckOutTime = checkOutTime;
+    
+    if (['present', 'late'].includes(status)) {
+      // 등원/지각: check_in_time만 설정
+      finalCheckInTime = checkInTime || new Date().toTimeString().split(' ')[0].slice(0, 5); // HH:mm
+      finalCheckOutTime = null;
+    } else if (['left', 'early_leave'].includes(status)) {
+      // 하원/조퇴: check_out_time만 설정
+      finalCheckInTime = null;
+      finalCheckOutTime = checkOutTime || new Date().toTimeString().split(' ')[0].slice(0, 5); // HH:mm
+    } else if (['out', 'returned'].includes(status)) {
+      // 외출/복귀: 시간 기록 (check_in_time에 저장)
+      finalCheckInTime = checkInTime || new Date().toTimeString().split(' ')[0].slice(0, 5);
+      finalCheckOutTime = null;
     }
 
-    if (existing.length > 0) {
-      if (lectureId) {
-        await db.execute(
-          `UPDATE attendance SET status = ?, check_in_time = COALESCE(?, check_in_time), check_out_time = COALESCE(?, check_out_time), notes = ?, updated_at = NOW()
-           WHERE tenant_id = ? AND student_id = ? AND lecture_id = ? AND date = ?`,
-          [status, checkInTime || null, checkOutTime || null, notes || null, tenant_id, studentId, lectureId, date]
-        );
-      } else {
-        await db.execute(
-          `UPDATE attendance SET status = ?, check_in_time = COALESCE(?, check_in_time), check_out_time = COALESCE(?, check_out_time), notes = ?, updated_at = NOW()
-           WHERE tenant_id = ? AND student_id = ? AND lecture_id IS NULL AND date = ?`,
-          [status, checkInTime || null, checkOutTime || null, notes || null, tenant_id, studentId, date]
-        );
-      }
-      console.log('✅ 기존 기록 업데이트');
-    } else {
-      await db.execute(
-        `INSERT INTO attendance (tenant_id, student_id, lecture_id, date, status, check_in_time, check_out_time, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [tenant_id, studentId, lectureId || null, date, status, checkInTime || null, checkOutTime || null, notes || null]
-      );
-      console.log('✅ 새 기록 생성');
-    }
+    await db.execute(
+      `INSERT INTO attendance (tenant_id, student_id, lecture_id, date, status, check_in_time, check_out_time, notes) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [tenant_id, studentId, lectureId || null, date, status, finalCheckInTime, finalCheckOutTime, notes || null]
+    );
+    console.log(`✅ 새 출입 기록 생성: ${status} (등원→외출→복귀→하원 이력 추적)`);
 
     // ✅ SMS 차감 및 발송 로그 기록 (등원, 하원 시에만)
     if (['present', 'late', 'left', 'early_leave'].includes(status)) {
@@ -216,19 +213,46 @@ router.get('/monthly', [
 
     const [students] = await db.execute('SELECT id, name, student_number FROM students WHERE tenant_id = ? AND is_active = true ORDER BY name', [tenant_id]);
     const [records] = await db.execute(
-      `SELECT student_id, DATE_FORMAT(date, '%d') as day, status, check_in_time, check_out_time FROM attendance 
-       WHERE tenant_id = ? AND date BETWEEN ? AND ? ORDER BY student_id, date`,
+      `SELECT student_id, DATE_FORMAT(date, '%d') as day, status, check_in_time, check_out_time, created_at FROM attendance 
+       WHERE tenant_id = ? AND date BETWEEN ? AND ? ORDER BY student_id, date, created_at`,
       [tenant_id, startDate, endDate]
     );
 
+    // ✅ 수정: 하루에 여러 개의 출입 기록(등원, 외출, 복귀, 하원)이 있으므로
+    // 월별 화면에는 첫 번째 등원과 마지막 하원만 표시
     const monthlyData = students.map(student => {
       const daily = {};
-      records.filter(r => r.student_id === student.id).forEach(record => {
+      const studentRecords = records.filter(r => r.student_id === student.id);
+      
+      // 날짜별로 그룹화
+      const recordsByDay = {};
+      studentRecords.forEach(record => {
         const dayNum = parseInt(record.day);
-        const checkOut = (record.status === 'left' || record.status === 'early_leave') ? record.check_out_time : null;
-        daily[dayNum] = { in: record.check_in_time, out: checkOut, status: record.status };
+        if (!recordsByDay[dayNum]) recordsByDay[dayNum] = [];
+        recordsByDay[dayNum].push(record);
       });
-      return { studentId: student.id, studentName: student.name, studentNumber: student.student_number, daily, totalDays: records.filter(r => r.student_id === student.id).length };
+      
+      // 각 날짜별로 첫 등원, 마지막 하원만 추출
+      Object.keys(recordsByDay).forEach(dayNum => {
+        const dayRecords = recordsByDay[dayNum];
+        
+        // 첫 번째 등원 찾기 (present, late)
+        const firstCheckIn = dayRecords.find(r => ['present', 'late'].includes(r.status));
+        
+        // 마지막 하원 찾기 (left, early_leave)
+        const lastCheckOut = [...dayRecords].reverse().find(r => ['left', 'early_leave'].includes(r.status));
+        
+        daily[dayNum] = {
+          in: firstCheckIn ? firstCheckIn.check_in_time : null,
+          out: lastCheckOut ? lastCheckOut.check_out_time : null,
+          status: lastCheckOut ? lastCheckOut.status : (firstCheckIn ? firstCheckIn.status : null)
+        };
+      });
+      
+      // totalDays: 등원한 날 수 (중복 제거)
+      const attendedDays = Object.keys(recordsByDay).length;
+      
+      return { studentId: student.id, studentName: student.name, studentNumber: student.student_number, daily, totalDays: attendedDays };
     });
 
     res.json({ success: true, data: { yearMonth, students: monthlyData, totalStudents: students.length } });
@@ -245,47 +269,84 @@ router.get('/stats', [
   authenticateToken,
   query('startDate').isDate(),
   query('endDate').isDate(),
-  query('classId').optional().isInt()
+  query('classId').optional().isInt(),
+  query('studentId').optional().isInt()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', details: errors.array() } });
 
-    const { startDate, endDate, classId } = req.query;
+    const { startDate, endDate, classId, studentId } = req.query;
     const tenant_id = req.user?.tenant_id;
 
-    console.log('📊 출결 통계:', { startDate, endDate, classId });
+    console.log('📊 출결 통계:', { startDate, endDate, classId, studentId });
 
-    let statsQuery = `SELECT s.id as student_id, s.name as student_name, s.student_number, COUNT(a.id) as total_days,
-      SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_days,
+    // ✅ 학생별 기본 통계 (간단한 출석률 계산)
+    let statsQuery = `SELECT s.id as student_id, s.name as student_name, s.student_number,
+      SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) as present_days,
       SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent_days,
       SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_days,
       SUM(CASE WHEN a.status = 'early_leave' THEN 1 ELSE 0 END) as early_leave_days,
-      ROUND(CASE WHEN COUNT(a.id) > 0 THEN (SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) / COUNT(a.id)) * 100 ELSE 0 END, 2) as attendance_rate
-      FROM students s LEFT JOIN attendance a ON s.id = a.student_id AND a.tenant_id = ? AND a.date BETWEEN ? AND ?
+      COUNT(DISTINCT a.date) as total_days,
+      ROUND(CASE WHEN COUNT(DISTINCT a.date) > 0 THEN (SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) / COUNT(DISTINCT a.date)) * 100 ELSE 0 END, 1) as attendance_rate
+      FROM students s
+      LEFT JOIN attendance a ON s.id = a.student_id AND a.tenant_id = ? AND a.date BETWEEN ? AND ?
       WHERE s.tenant_id = ?`;
-    
+
     const params = [tenant_id, startDate, endDate, tenant_id];
     if (classId) { statsQuery += ' AND a.lecture_id = ?'; params.push(classId); }
+    if (studentId) { statsQuery += ' AND s.id = ?'; params.push(studentId); }
     statsQuery += ` GROUP BY s.id, s.name, s.student_number ORDER BY s.name`;
 
     const [stats] = await db.execute(statsQuery, params);
 
-    let overallQuery = `SELECT COUNT(DISTINCT s.id) as total_students, COUNT(a.id) as total_records,
-      SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as total_present,
+    // ✅ 전체 통계 (동일하게 유지)
+    let overallQuery = `SELECT COUNT(DISTINCT s.id) as total_students,
+      SUM(CASE WHEN a.status IN ('present', 'late') THEN 1 ELSE 0 END) as total_present,
       SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as total_absent,
       SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as total_late,
-      SUM(CASE WHEN a.status = 'early_leave' THEN 1 ELSE 0 END) as total_early_leave,
-      ROUND(CASE WHEN COUNT(a.id) > 0 THEN (SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) / COUNT(a.id)) * 100 ELSE 0 END, 2) as overall_attendance_rate
-      FROM students s LEFT JOIN attendance a ON s.id = a.student_id AND a.tenant_id = ? AND a.date BETWEEN ? AND ?
+      SUM(CASE WHEN a.status = 'early_leave' THEN 1 ELSE 0 END) as total_early_leave
+      FROM students s
+      LEFT JOIN attendance a ON s.id = a.student_id AND a.tenant_id = ? AND a.date BETWEEN ? AND ?
       WHERE s.tenant_id = ?`;
-    
+
     const overallParams = [tenant_id, startDate, endDate, tenant_id];
     if (classId) { overallQuery += ' AND a.lecture_id = ?'; overallParams.push(classId); }
+    if (studentId) { overallQuery += ' AND s.id = ?'; overallParams.push(studentId); }
 
     const [overall] = await db.execute(overallQuery, overallParams);
 
-    res.json({ success: true, data: { studentStats: stats, overallStats: overall[0], period: { startDate, endDate, classId } } });
+    // ✅ 날짜별 상세 출석 내역 (날짜별, 강의별 출석 상태)
+    let detailQuery = `SELECT
+      s.id as student_id,
+      s.name as student_name,
+      a.date,
+      a.status,
+      a.check_in_time,
+      a.check_out_time,
+      l.name as lecture_name,
+      a.notes
+      FROM attendance a
+      JOIN students s ON a.student_id = s.id AND s.tenant_id = ?
+      LEFT JOIN lectures l ON a.lecture_id = l.id
+      WHERE a.tenant_id = ? AND a.date BETWEEN ? AND ?`;
+
+    const detailParams = [tenant_id, tenant_id, startDate, endDate];
+    if (classId) { detailQuery += ' AND a.lecture_id = ?'; detailParams.push(classId); }
+    if (studentId) { detailQuery += ' AND a.student_id = ?'; detailParams.push(studentId); }
+    detailQuery += ` ORDER BY a.date DESC, s.name, a.check_in_time`;
+
+    const [detailedRecords] = await db.execute(detailQuery, detailParams);
+
+    res.json({
+      success: true,
+      data: {
+        studentStats: stats,
+        overallStats: overall[0],
+        detailedRecords: detailedRecords,
+        period: { startDate, endDate, classId, studentId }
+      }
+    });
   } catch (error) {
     console.error('❌ 통계 조회 오류:', error);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_SERVER_ERROR' } });

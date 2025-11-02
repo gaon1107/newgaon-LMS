@@ -287,12 +287,12 @@ export const AttendanceProvider = ({ children }) => {
   }
 
   // 출석 통계 조회
-  const getAttendanceStats = async (startDate, endDate, classId = null) => {
+  const getAttendanceStats = async (startDate, endDate, classId = null, studentId = null) => {
     try {
-      console.log('📊 출석 통계 조회 중...', { startDate, endDate, classId })
-      
-      const response = await attendanceService.getAttendanceStats(startDate, endDate, classId)
-      
+      console.log('📊 출석 통계 조회 중...', { startDate, endDate, classId, studentId })
+
+      const response = await attendanceService.getAttendanceStats(startDate, endDate, classId, studentId)
+
       if (response.success) {
         console.log('✅ 출석 통계 조회 성공:', response.data)
         return response.data

@@ -7,8 +7,6 @@ import {
   CardContent,
   Button,
   Paper,
-  Tabs,
-  Tab,
   Alert,
   Dialog,
   DialogTitle,
@@ -49,7 +47,8 @@ import {
   Save as SaveIcon,
   Cancel as CancelIcon,
   Refresh as RefreshIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Payment as PaymentIcon
 } from '@mui/icons-material'
 import * as XLSX from 'xlsx'
 import { useLMS } from '../contexts/LMSContext'
@@ -80,7 +79,6 @@ const FilePage = () => {
   const fileInputRef = useRef(null)
 
   // 상태 변수들 먼저 정의
-  const [tabValue, setTabValue] = useState(0)
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [studentFiles, setStudentFiles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -89,17 +87,27 @@ const FilePage = () => {
   const [showPreview, setShowPreview] = useState(false)
   const [validationErrors, setValidationErrors] = useState([])
   const [bulkUploadLoading, setBulkUploadLoading] = useState(false)
+  const [studentTemplateOpen, setStudentTemplateOpen] = useState(false)
   const [attendanceReportOpen, setAttendanceReportOpen] = useState(false)
-  const [reportDateRange, setReportDateRange] = useState({
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0]
+  const [paymentStatusOpen, setPaymentStatusOpen] = useState(false)
+  // ✅ 수정: 기본값을 이번 달 1일부터 오늘까지로 명확하게 설정
+  const [reportDateRange, setReportDateRange] = useState(() => {
+    const today = new Date()
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    return {
+      startDate: firstDayOfMonth.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0]
+    }
   })
+  // ✅ 학생 선택 필터
+  const [selectedStudentId, setSelectedStudentId] = useState(null)
   const [editingRows, setEditingRows] = useState(new Set())
   const [editedData, setEditedData] = useState({})
   // ✅ DB에서 받은 출석 통계 데이터 저장
   const [dbAttendanceStats, setDbAttendanceStats] = useState({
     studentStats: [],
     overallStats: null,
+    detailedRecords: [],
     period: {}
   })
 
@@ -285,7 +293,7 @@ const FilePage = () => {
         return { summary: [], details: [] }
       }
     }
-  }, [reportDateRange.startDate, reportDateRange.endDate, attendanceRecords, attendanceStudents])
+  }, [reportDateRange.startDate, reportDateRange.endDate, attendanceRecords, attendanceStudents, dbAttendanceStats])
 
   // 출석 데이터 최적화 (DB 데이터 포함)
   const attendanceData = useMemo(() => {
@@ -422,22 +430,26 @@ const FilePage = () => {
       setLoading(true)
       console.log('📊 출석 통계 데이터 로드 중...', {
         startDate: reportDateRange.startDate,
-        endDate: reportDateRange.endDate
+        endDate: reportDateRange.endDate,
+        studentId: selectedStudentId
       })
 
-      // ✅ AttendanceContext의 getAttendanceStats 함수 호출
+      // ✅ AttendanceContext의 getAttendanceStats 함수 호출 (학생 ID 포함)
       const statsData = await attendanceContext.getAttendanceStats(
         reportDateRange.startDate,
-        reportDateRange.endDate
+        reportDateRange.endDate,
+        null,  // classId
+        selectedStudentId
       )
 
       console.log('✅ 출석 통계 데이터 로드 성공:', statsData)
-      
+
       // 📌 받은 데이터를 상태에 저장 (화면에 반영되도록)
       if (statsData && statsData.studentStats) {
         setDbAttendanceStats({
           studentStats: statsData.studentStats,
           overallStats: statsData.overallStats,
+          detailedRecords: statsData.detailedRecords || [],
           details: statsData.details || [],
           period: {
             startDate: reportDateRange.startDate,
@@ -446,7 +458,7 @@ const FilePage = () => {
         })
         console.log('💾 DB 데이터가 상태에 저장되었습니다')
       }
-      
+
       setLoading(false)
     } catch (error) {
       console.error('❌ 출석 통계 데이터 로드 실패:', error)
@@ -455,8 +467,39 @@ const FilePage = () => {
     }
   }
 
+  // ✅ 로컬 날짜를 YYYY-MM-DD 형식으로 변환 (타임존 문제 해결)
+  const formatLocalDate = (date) => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   // 출결 통계 리포트 모달 열기
   const handleDownloadAttendanceReport = () => {
+    // ✅ 모달이 열릴 때마다 조회 기간을 이번 달 1일로 초기화
+    const today = new Date()
+    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+
+    const newDateRange = {
+      startDate: formatLocalDate(firstDayOfMonth),
+      endDate: formatLocalDate(today)
+    }
+
+    console.log('🗓️ 모달 열림 - 날짜 초기화:', newDateRange)
+
+    // 모든 필터 초기화
+    setReportDateRange(newDateRange)
+    setSelectedStudentId(null)
+
+    // DB 데이터 초기화
+    setDbAttendanceStats({
+      studentStats: [],
+      overallStats: null,
+      detailedRecords: [],
+      period: {}
+    })
+
     setAttendanceReportOpen(true)
     // 모달이 열렸을 때 DB에서 데이터 로드
     setTimeout(() => {
@@ -469,19 +512,39 @@ const FilePage = () => {
     setAttendanceReportOpen(false)
   }
 
+  // 학생 등록 양식 모달 열기
+  const handleOpenStudentTemplate = () => {
+    setStudentTemplateOpen(true)
+  }
+
+  // 학생 등록 양식 모달 닫기
+  const handleCloseStudentTemplate = () => {
+    setStudentTemplateOpen(false)
+  }
+
+  // 수납현황 모달 열기
+  const handleOpenPaymentStatus = () => {
+    setPaymentStatusOpen(true)
+  }
+
+  // 수납현황 모달 닫기
+  const handleClosePaymentStatus = () => {
+    setPaymentStatusOpen(false)
+  }
+
   // 출결 통계 데이터 새로고침
   const handleRefreshAttendanceData = async () => {
     console.log('🔄 출석 통계 데이터 새로고침 중...')
     await loadAttendanceStats()
   }
 
-  // 기간 변경 시 자동 새로고침
+  // 기간 변경 및 학생 선택 시 자동 새로고침
   useEffect(() => {
     if (attendanceReportOpen) {
-      console.log('📅 기간 변경 감지, 데이터 새로고침...')
+      console.log('📅 기간/학생 변경 감지, 데이터 새로고침...')
       loadAttendanceStats()
     }
-  }, [reportDateRange.startDate, reportDateRange.endDate, attendanceReportOpen])
+  }, [reportDateRange.startDate, reportDateRange.endDate, selectedStudentId, attendanceReportOpen])
 
   // 엑셀 다운로드 실행
   const handleExcelDownload = async () => {
@@ -524,8 +587,8 @@ const FilePage = () => {
     alert(`${fileName} 파일이 다운로드되었습니다.`)
   }
 
-  // 학생 등록 템플릿 다운로드
-  const handleDownloadStudentTemplate = () => {
+  // 학생 등록 템플릿 파일 다운로드
+  const downloadStudentTemplateFile = () => {
     try {
       // 학생 등록 양식 데이터 구조 (예시 데이터 개선)
       const templateData = [
@@ -1658,7 +1721,7 @@ const FilePage = () => {
       {/* 빠른 액션 카드 */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ cursor: 'pointer' }} onClick={handleDownloadStudentTemplate}>
+          <Card sx={{ cursor: 'pointer' }} onClick={handleOpenStudentTemplate}>
             <CardContent sx={{ textAlign: 'center' }}>
               <ExcelIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
               <Typography variant="h6">학생 등록 양식</Typography>
@@ -1680,179 +1743,19 @@ const FilePage = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ cursor: 'pointer' }} onClick={handleOpenPaymentStatus}>
             <CardContent sx={{ textAlign: 'center' }}>
-              <UploadIcon sx={{ fontSize: 48, color: 'info.main', mb: 1 }} />
-              <Typography variant="h6">파일 업로드</Typography>
+              <PaymentIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 1 }} />
+              <Typography variant="h6">수납현황</Typography>
               <Typography variant="body2" color="text.secondary">
-                {uploadedFiles.length}개 파일
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <DownloadIcon sx={{ fontSize: 48, color: 'warning.main', mb: 1 }} />
-              <Typography variant="h6">다운로드</Typography>
-              <Typography variant="body2" color="text.secondary">
-                파일 관리
+                당월 납부 현황
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
-
-      {/* 탭 메뉴 */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={(e, newValue) => setTabValue(newValue)}
-          variant="fullWidth"
-        >
-          <Tab label="일반 파일" />
-          <Tab label="학생 일괄 등록" />
-          <Tab label="리포트 다운로드" />
-        </Tabs>
-      </Paper>
-
-      {/* 탭 내용 */}
-      {tabValue === 0 && (
-        <Alert severity="info">
-          <Typography variant="body2">
-            일반 파일 업로드 기능입니다. FileManager 컴포넌트가 필요합니다.
-          </Typography>
-        </Alert>
-      )}
-
-      {tabValue === 1 && (
-        <Box>
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
-              학생 정보를 일괄 등록하려면 먼저 양식을 다운로드하여 작성한 후 업로드하세요.
-            </Typography>
-          </Alert>
-
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6}>
-              <Button
-                variant="outlined"
-                startIcon={<ExcelIcon />}
-                onClick={handleDownloadStudentTemplate}
-                fullWidth
-                size="large"
-              >
-                1. 학생 등록 양식 다운로드
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleExcelUpload}
-                accept=".xlsx,.xls"
-                style={{ display: 'none' }}
-              />
-              <Button
-                variant="contained"
-                startIcon={loading ? undefined : <UploadIcon />}
-                onClick={() => fileInputRef.current?.click()}
-                fullWidth
-                size="large"
-                color="primary"
-                disabled={loading}
-              >
-                {loading ? '파일 읽는 중...' : '2. 작성한 양식 업로드'}
-              </Button>
-            </Grid>
-          </Grid>
-
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            <Typography variant="body2">
-              <strong>주의사항:</strong><br/>
-              • 엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.<br/>
-              • 학생명, 학교, 학부모연락처, 수강클래스는 필수 입력 항목입니다.<br/>
-              • 전화번호는 010-1234-5678 형식으로 입력해주세요.<br/>
-              • 자동 메시지 설정은 Y 또는 N으로 입력해주세요.
-            </Typography>
-          </Alert>
-        </Box>
-      )}
-
-      {tabValue === 2 && (
-        <Box>
-          <Typography variant="h6" gutterBottom>
-            리포트 다운로드
-          </Typography>
-          
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    출결 통계 리포트
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    월별/일별 출결 현황을 엑셀 파일로 다운로드합니다.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleDownloadAttendanceReport}
-                    disabled={loading}
-                    fullWidth
-                  >
-                    {loading ? '생성 중...' : '다운로드'}
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    학생 명단
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    현재 등록된 학생 명단을 엑셀 파일로 다운로드합니다.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    fullWidth
-                  >
-                    다운로드
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} sm={6} md={4}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    강사 현황
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    강사 정보 및 담당 강의 현황을 다운로드합니다.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    fullWidth
-                  >
-                    다운로드
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </Box>
-      )}
 
       {/* 미리보기 다이얼로그 */}
       <Dialog
@@ -2491,11 +2394,11 @@ const FilePage = () => {
                 현재 출석 기록이 없습니다. 출석 관리 페이지에서 출석 기록을 등록한 후 다시 확인해주세요.
               </Alert>
             )}
-            {/* 기간 선택 */}
+            {/* 조회 조건 선택 */}
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>조회 기간</Typography>
+              <Typography variant="h6" gutterBottom>조회 조건</Typography>
               <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
                   <TextField
                     fullWidth
                     label="시작일"
@@ -2505,7 +2408,7 @@ const FilePage = () => {
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
                   <TextField
                     fullWidth
                     label="종료일"
@@ -2515,9 +2418,28 @@ const FilePage = () => {
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="원생 선택"
+                    value={selectedStudentId || ''}
+                    onChange={(e) => setSelectedStudentId(e.target.value || null)}
+                    SelectProps={{ native: true }}
+                    InputLabelProps={{ shrink: true }}
+                  >
+                    <option value="">전체 원생</option>
+                    {attendanceStudents.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {student.name}
+                      </option>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={3}>
                   <Button
                     variant="outlined"
+                    fullWidth
                     onClick={() => {
                       const today = new Date()
                       const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -2525,9 +2447,10 @@ const FilePage = () => {
                         startDate: firstDay.toISOString().split('T')[0],
                         endDate: today.toISOString().split('T')[0]
                       })
+                      setSelectedStudentId(null)
                     }}
                   >
-                    이번 달
+                    이번 달 전체
                   </Button>
                 </Grid>
               </Grid>
@@ -2621,7 +2544,7 @@ const FilePage = () => {
                           textAnchor="end"
                           height={80}
                         />
-                        <YAxis />
+                        <YAxis domain={[0, 100]} />
                         <RechartsTooltip />
                         <Legend />
                         <Bar dataKey="출석률(%)" fill="#8884d8" />
@@ -2638,17 +2561,28 @@ const FilePage = () => {
                       <PieChart>
                         <Pie
                           data={(() => {
-                            const totalAttendance = attendanceData.summary.reduce((sum, s) => sum + s['출석일수'], 0)
-                            const totalLate = attendanceData.summary.reduce((sum, s) => sum + s['지각일수'], 0)
-                            const totalEarlyLeave = attendanceData.summary.reduce((sum, s) => sum + s['조퇴일수'], 0)
-                            const totalAbsent = attendanceData.summary.reduce((sum, s) => sum + s['결석일수'], 0)
+                            // ✅ 배열을 안전하게 숫자로 변환하는 함수
+                            const safeNumber = (value) => {
+                              if (typeof value === 'number') return value
+                              if (Array.isArray(value)) return value[0] || 0
+                              if (typeof value === 'string') return parseInt(value) || 0
+                              return 0
+                            }
 
-                            return [
+                            const totalAttendance = attendanceData.summary.reduce((sum, s) => sum + safeNumber(s['출석일수']), 0)
+                            const totalLate = attendanceData.summary.reduce((sum, s) => sum + safeNumber(s['지각일수']), 0)
+                            const totalEarlyLeave = attendanceData.summary.reduce((sum, s) => sum + safeNumber(s['조퇴일수']), 0)
+                            const totalAbsent = attendanceData.summary.reduce((sum, s) => sum + safeNumber(s['결석일수']), 0)
+
+                            const chartData = [
                               { name: '출석', value: totalAttendance, fill: '#8884d8' },
                               { name: '지각', value: totalLate, fill: '#82ca9d' },
                               { name: '조퇴', value: totalEarlyLeave, fill: '#ffc658' },
                               { name: '결석', value: totalAbsent, fill: '#ff7c7c' }
                             ]
+
+                            console.log('📊 차트 데이터:', chartData)
+                            return chartData
                           })()}
                           cx="50%"
                           cy="50%"
@@ -2667,41 +2601,105 @@ const FilePage = () => {
               </Grid>
             </Grid>
 
-            {/* 학생별 상세 테이블 */}
+            {/* 학생별 기본 통계 */}
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>학생별 상세 현황</Typography>
-              <TableContainer sx={{ maxHeight: 400 }}>
-                <Table stickyHeader>
+              <Typography variant="h6" gutterBottom>학생별 기본 통계</Typography>
+              <TableContainer sx={{ maxHeight: 300 }}>
+                <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>학생명</TableCell>
-                      <TableCell align="center">총일수</TableCell>
-                      <TableCell align="center">출석일수</TableCell>
-                      <TableCell align="center">지각일수</TableCell>
-                      <TableCell align="center">조퇴일수</TableCell>
-                      <TableCell align="center">결석일수</TableCell>
+                      <TableCell align="center">출석</TableCell>
+                      <TableCell align="center">지각</TableCell>
+                      <TableCell align="center">조퇴</TableCell>
+                      <TableCell align="center">결석</TableCell>
                       <TableCell align="center">출석률</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {attendanceData.summary.map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{row['학생명']}</TableCell>
-                        <TableCell align="center">{row['총일수']}</TableCell>
-                        <TableCell align="center">{row['출석일수']}</TableCell>
-                        <TableCell align="center">{row['지각일수']}</TableCell>
-                        <TableCell align="center">{row['조퇴일수']}</TableCell>
-                        <TableCell align="center">{row['결석일수']}</TableCell>
-                        <TableCell align="center">
-                          <Chip
-                            label={`${row['출석률(%)']}%`}
-                            color={parseFloat(row['출석률(%)']) >= 90 ? 'success' :
-                                   parseFloat(row['출석률(%)']) >= 80 ? 'warning' : 'error'}
-                            size="small"
-                          />
+                    {dbAttendanceStats.studentStats && dbAttendanceStats.studentStats.length > 0 ? (
+                      dbAttendanceStats.studentStats.map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{row.student_name}</TableCell>
+                          <TableCell align="center">{row.present_days}</TableCell>
+                          <TableCell align="center">{row.late_days}</TableCell>
+                          <TableCell align="center">{row.early_leave_days}</TableCell>
+                          <TableCell align="center">{row.absent_days}</TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={`${row.attendance_rate}%`}
+                              color={parseFloat(row.attendance_rate) >= 90 ? 'success' :
+                                     parseFloat(row.attendance_rate) >= 80 ? 'warning' : 'error'}
+                              size="small"
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} align="center">
+                          데이터가 없습니다
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+
+            {/* 날짜별 상세 출석 내역 */}
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>날짜별 상세 출석 내역</Typography>
+              <TableContainer sx={{ maxHeight: 500 }}>
+                <Table stickyHeader size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>날짜</TableCell>
+                      <TableCell>학생명</TableCell>
+                      <TableCell>강의명</TableCell>
+                      <TableCell align="center">상태</TableCell>
+                      <TableCell align="center">등원시간</TableCell>
+                      <TableCell align="center">하원시간</TableCell>
+                      <TableCell>비고</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {dbAttendanceStats.detailedRecords && dbAttendanceStats.detailedRecords.length > 0 ? (
+                      dbAttendanceStats.detailedRecords.map((record, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{record.date}</TableCell>
+                          <TableCell>{record.student_name}</TableCell>
+                          <TableCell>{record.lecture_name || '-'}</TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={
+                                record.status === 'present' ? '출석' :
+                                record.status === 'late' ? '지각' :
+                                record.status === 'early_leave' ? '조퇴' :
+                                record.status === 'absent' ? '결석' :
+                                record.status === 'left' ? '하원' : record.status
+                              }
+                              color={
+                                record.status === 'present' || record.status === 'left' ? 'success' :
+                                record.status === 'late' ? 'warning' :
+                                record.status === 'early_leave' ? 'info' :
+                                'error'
+                              }
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="center">{record.check_in_time || '-'}</TableCell>
+                          <TableCell align="center">{record.check_out_time || '-'}</TableCell>
+                          <TableCell>{record.notes || '-'}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center">
+                          출석 기록이 없습니다
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -2719,6 +2717,232 @@ const FilePage = () => {
             disabled={loading}
           >
             {loading ? '생성 중...' : '엑셀 다운로드'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 학생 등록 양식 모달 */}
+      <Dialog
+        open={studentTemplateOpen}
+        onClose={(event, reason) => {
+          if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+            handleCloseStudentTemplate()
+          }
+        }}
+        disableEscapeKeyDown
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Box>
+              <Typography variant="h5">학생 등록 양식</Typography>
+              <Typography variant="body2" color="text.secondary">
+                엑셀 양식을 다운로드하여 작성 후 업로드하세요
+              </Typography>
+            </Box>
+            <Tooltip title="닫기">
+              <IconButton onClick={handleCloseStudentTemplate} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3}>
+            <Alert severity="info">
+              <Typography variant="body2">
+                학생 정보를 일괄 등록하려면 먼저 양식을 다운로드하여 작성한 후 업로드하세요.
+              </Typography>
+            </Alert>
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Button
+                  variant="outlined"
+                  startIcon={<ExcelIcon />}
+                  onClick={downloadStudentTemplateFile}
+                  fullWidth
+                  size="large"
+                >
+                  1. 학생 등록 양식 다운로드
+                </Button>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleExcelUpload}
+                  accept=".xlsx,.xls"
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={loading ? undefined : <UploadIcon />}
+                  onClick={() => fileInputRef.current?.click()}
+                  fullWidth
+                  size="large"
+                  color="primary"
+                  disabled={loading}
+                >
+                  {loading ? '파일 읽는 중...' : '2. 작성한 양식 업로드'}
+                </Button>
+              </Grid>
+            </Grid>
+
+            <Alert severity="warning">
+              <Typography variant="body2">
+                <strong>주의사항:</strong><br/>
+                • 엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.<br/>
+                • 학생명, 학교, 학부모연락처, 수강클래스는 필수 입력 항목입니다.<br/>
+                • 전화번호는 010-1234-5678 형식으로 입력해주세요.<br/>
+                • 자동 메시지 설정은 Y 또는 N으로 입력해주세요.
+              </Typography>
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseStudentTemplate}>
+            닫기
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 수납현황 모달 */}
+      <Dialog
+        open={paymentStatusOpen}
+        onClose={(event, reason) => {
+          if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
+            handleClosePaymentStatus()
+          }
+        }}
+        disableEscapeKeyDown
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{
+          sx: { height: '90vh' }
+        }}
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Box>
+              <Typography variant="h5">수납현황</Typography>
+              <Typography variant="body2" color="text.secondary">
+                당월 납부 현황 및 수납 이력 조회
+              </Typography>
+            </Box>
+            <Tooltip title="닫기">
+              <IconButton onClick={handleClosePaymentStatus} size="small">
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3}>
+            {/* 학생 검색 */}
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>학생 검색</Typography>
+              <TextField
+                fullWidth
+                label="학생명 입력"
+                placeholder="검색할 학생명을 입력하세요"
+                InputLabelProps={{ shrink: true }}
+              />
+            </Paper>
+
+            {/* 당월 납부 현황 */}
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>당월 납부 현황</Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>학생명</TableCell>
+                      <TableCell>학년</TableCell>
+                      <TableCell>납부 상태</TableCell>
+                      <TableCell>납부일</TableCell>
+                      <TableCell>납부 금액</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          학생을 검색하여 수납 현황을 확인하세요
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+
+            {/* 선택한 학생의 상세 정보 */}
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom>학생 상세 정보</Typography>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                학생을 선택하면 과거 수납 이력, 수납 방식, 신청 강의 및 수강료를 확인할 수 있습니다.
+              </Alert>
+
+              {/* 신청 강의 및 수강료 */}
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ mt: 2 }}>
+                신청 강의
+              </Typography>
+              <TableContainer sx={{ mb: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>강의명</TableCell>
+                      <TableCell>수강료</TableCell>
+                      <TableCell>시작일</TableCell>
+                      <TableCell>종료일</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          데이터 없음
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* 과거 수납 이력 */}
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                과거 수납 이력
+              </Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>납부일</TableCell>
+                      <TableCell>납부 금액</TableCell>
+                      <TableCell>납부 방식</TableCell>
+                      <TableCell>강의명</TableCell>
+                      <TableCell>비고</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          데이터 없음
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePaymentStatus}>
+            닫기
           </Button>
         </DialogActions>
       </Dialog>

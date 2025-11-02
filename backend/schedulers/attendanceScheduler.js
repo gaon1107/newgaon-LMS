@@ -67,21 +67,18 @@ async function resetDailyAttendance() {
         하원: statusCount.left
       }]);
 
-      // 2. 모든 출석 기록을 '미등원' 상태로 초기화
-      const [updateResult] = await db.execute(`
-        UPDATE attendance
-        SET status = 'absent',
-            check_in_time = NULL,
-            check_out_time = NULL,
-            notes = CONCAT(COALESCE(notes, ''), ' [자정 자동 초기화]'),
-            updated_at = NOW()
+      // 2. 오늘 날짜의 모든 출석 기록 삭제 (자정에 새로운 날 시작)
+      // ✅ 수정: 여러 개의 출입 기록(등원, 외출, 복귀, 하원)이 있으므로 모두 삭제
+      const [deleteResult] = await db.execute(`
+        DELETE FROM attendance
         WHERE date = ?
       `, [today]);
 
-      console.log(`\n✅ ${updateResult.affectedRows}건의 출석 기록을 '미등원' 상태로 초기화했습니다`);
+      console.log(`\n✅ ${deleteResult.affectedRows}건의 출석 기록을 삭제했습니다 (새로운 날 시작)`);
+      console.log('   학생들이 등원하면 새로운 출석 기록이 생성됩니다');
     } else {
       console.log(`✅ 오늘(${today})은 아직 출석 기록이 없습니다`);
-      console.log('   학생들이 등원하면 출석 기록이 생성됩니다');
+      console.log('   학생들이 등원하면 새로운 출석 기록이 생성됩니다');
     }
 
     console.log('\n========================================');

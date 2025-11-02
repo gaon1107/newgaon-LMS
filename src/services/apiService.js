@@ -101,10 +101,11 @@ export const attendanceService = {
   },
 
   // 출결 통계 조회
-  getAttendanceStats: async (startDate, endDate, classId = null) => {
+  getAttendanceStats: async (startDate, endDate, classId = null, studentId = null) => {
     const params = { startDate, endDate }
     if (classId) params.classId = classId
-    
+    if (studentId) params.studentId = studentId
+
     const response = await apiClient.get('/attendance/stats', { params })
     return response.data
   },

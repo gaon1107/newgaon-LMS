@@ -88,10 +88,21 @@ const AttendanceMonthlyPage = () => {
       return <TableCell key={dayNum} align="center" sx={{ minWidth: 100 }}>-</TableCell>
     }
 
-    // ✅ 월별출석: 첫 등원 시간과 마지막 하원 시간만 표시
-    // 외출/복귀는 표시하지 않음
+    // ✅ 월별출석: 등원, 하원, 조퇴만 표시 (외출/복귀는 표시 안 함)
     const hasCheckIn = dayData.in && dayData.in !== 'null'
     const hasCheckOut = dayData.out && dayData.out !== 'null'
+
+    // ✅ 상태에 따른 표시 라벨 결정
+    let checkOutLabel = '하원'
+    let checkOutColor = 'info.main'
+
+    if (dayData.status === 'early_leave') {
+      checkOutLabel = '조퇴'
+      checkOutColor = 'warning.main'
+    } else if (dayData.status === 'left') {
+      checkOutLabel = '하원'
+      checkOutColor = 'info.main'
+    }
 
     return (
       <TableCell key={dayNum} align="center" sx={{ minWidth: 100 }}>
@@ -101,16 +112,16 @@ const AttendanceMonthlyPage = () => {
           color: 'text.primary'
         }}>
           {hasCheckIn && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.3 }}>
-              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'success.main', fontWeight: 'medium' }}>
+            <Box sx={{ mb: 0.3 }}>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'success.main', fontWeight: 'medium', whiteSpace: 'nowrap' }}>
                 등원: {dayData.in}
               </Typography>
             </Box>
           )}
           {hasCheckOut && (
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'info.main', fontWeight: 'medium' }}>
-                하원: {dayData.out}
+            <Box>
+              <Typography variant="caption" sx={{ fontSize: '0.7rem', color: checkOutColor, fontWeight: 'medium', whiteSpace: 'nowrap' }}>
+                {checkOutLabel}: {dayData.out}
               </Typography>
             </Box>
           )}
