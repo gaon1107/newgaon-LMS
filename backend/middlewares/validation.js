@@ -113,7 +113,7 @@ const studentSchema = Joi.object({
     }),
 
   profileImage: Joi.string()
-    .max(2000)
+    .max(500)  // URL 경로 최대 길이 (예: /uploads/students/1/1_student_1234567890.jpg)
     .allow('', null)
     .messages({
       'string.max': '프로필 이미지 경로가 너무 깁니다.'

@@ -1799,7 +1799,7 @@ const FilePage = () => {
 
       {/* 빠른 액션 카드 */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={6}>
           <Card sx={{ cursor: 'pointer' }} onClick={handleOpenStudentTemplate}>
             <CardContent sx={{ textAlign: 'center' }}>
               <ExcelIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
@@ -1810,7 +1810,9 @@ const FilePage = () => {
             </CardContent>
           </Card>
         </Grid>
-        
+
+        {/* 출결 통계 카드 - 비활성화 */}
+        {false && (
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={{ cursor: 'pointer' }} onClick={handleDownloadAttendanceReport}>
             <CardContent sx={{ textAlign: 'center' }}>
@@ -1822,8 +1824,9 @@ const FilePage = () => {
             </CardContent>
           </Card>
         </Grid>
+        )}
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={6}>
           <Card sx={{ cursor: 'pointer' }} onClick={handleOpenPaymentStatus}>
             <CardContent sx={{ textAlign: 'center' }}>
               <PaymentIcon sx={{ fontSize: 48, color: 'secondary.main', mb: 1 }} />
@@ -2426,7 +2429,8 @@ const FilePage = () => {
         </DialogActions>
       </Dialog>
 
-      {/* 출결 통계 리포트 모달 */}
+      {/* 출결 통계 리포트 모달 - 비활성화 */}
+      {false && (
       <Dialog
         open={attendanceReportOpen}
         onClose={(event, reason) => {
@@ -2799,6 +2803,7 @@ const FilePage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      )}
 
       {/* 학생 등록 양식 모달 */}
       <Dialog

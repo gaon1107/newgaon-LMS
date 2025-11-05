@@ -269,7 +269,9 @@ const AttendanceView = () => {
                   {/* 학생 정보 */}
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <Avatar
-                      src={student.profileImage}
+                      src={student.profileImage?.startsWith('/uploads')
+                        ? `http://localhost:5000${student.profileImage}`
+                        : student.profileImage}
                       sx={{ width: 50, height: 50, mr: 2 }}
                     >
                       {student.name.charAt(0)}

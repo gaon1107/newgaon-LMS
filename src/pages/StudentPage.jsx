@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useLMS } from '../contexts/LMSContext'
+import { studentService } from '../services/apiService'
 import {
   Box,
   Typography,
@@ -272,17 +273,25 @@ const StudentPage = () => {
     }))
   }
 
-  const handleImageUpload = (event) => {
+  const handleImageUpload = async (event) => {
     const file = event.target.files[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
+      try {
+        // 파일을 서버에 업로드하고 URL을 받음
+        const response = await studentService.uploadPhoto(file)
+        const photoPath = response.data.photoPath
+
+        // URL을 formData에 저장
         setFormData(prev => ({
           ...prev,
-          profileImage: e.target.result
+          profileImage: photoPath
         }))
+
+        console.log('✅ 사진 업로드 성공:', photoPath)
+      } catch (error) {
+        console.error('❌ 사진 업로드 실패:', error)
+        alert('사진 업로드에 실패했습니다.')
       }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -312,7 +321,7 @@ const StudentPage = () => {
     setPhotoDialogOpen(false)
   }
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     const video = document.getElementById('camera-video')
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
@@ -321,13 +330,30 @@ const StudentPage = () => {
     canvas.height = video.videoHeight
     context.drawImage(video, 0, 0)
 
-    const capturedImageData = canvas.toDataURL('image/jpeg')
-    setFormData(prev => ({
-      ...prev,
-      profileImage: capturedImageData
-    }))
+    try {
+      // Canvas를 Blob으로 변환
+      canvas.toBlob(async (blob) => {
+        // Blob을 File 객체로 변환
+        const file = new File([blob], `student_photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
 
-    stopCamera()
+        // 파일을 서버에 업로드하고 URL을 받음
+        const response = await studentService.uploadPhoto(file)
+        const photoPath = response.data.photoPath
+
+        // URL을 formData에 저장
+        setFormData(prev => ({
+          ...prev,
+          profileImage: photoPath
+        }))
+
+        console.log('✅ 카메라 사진 업로드 성공:', photoPath)
+        stopCamera()
+      }, 'image/jpeg', 0.9) // JPEG 품질 90%
+    } catch (error) {
+      console.error('❌ 카메라 사진 업로드 실패:', error)
+      alert('사진 업로드에 실패했습니다.')
+      stopCamera()
+    }
   }
 
   const stopCamera = () => {
@@ -402,11 +428,17 @@ const StudentPage = () => {
       sortable: false,
       filterable: false,
       renderCell: (params) => {
+        const imageUrl = params.row.profileImage
+          ? (params.row.profileImage.startsWith('/uploads')
+              ? `http://localhost:5000${params.row.profileImage}`
+              : params.row.profileImage)
+          : null
+
         return (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-            {params.row.profileImage ? (
+            {imageUrl ? (
               <Avatar
-                src={params.row.profileImage}
+                src={imageUrl}
                 sx={{ width: 40, height: 40 }}
               />
             ) : (
@@ -1072,7 +1104,9 @@ const StudentPage = () => {
                   >
                     {formData.profileImage ? (
                       <img
-                        src={formData.profileImage}
+                        src={formData.profileImage.startsWith('/uploads')
+                          ? `http://localhost:5000${formData.profileImage}`
+                          : formData.profileImage}
                         alt="학생 사진"
                         style={{
                           width: '100%',

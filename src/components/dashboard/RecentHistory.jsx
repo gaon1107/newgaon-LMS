@@ -184,7 +184,12 @@ const RecentHistory = () => {
             <React.Fragment key={item.id}>
               <ListItem sx={{ px: 0 }}>
                 <ListItemAvatar>
-                  <Avatar src={item.profileImage} sx={{ width: 40, height: 40 }}>
+                  <Avatar
+                    src={item.profileImage?.startsWith('/uploads')
+                      ? `http://localhost:5000${item.profileImage}`
+                      : item.profileImage}
+                    sx={{ width: 40, height: 40 }}
+                  >
                     {item.studentName.charAt(0)}
                   </Avatar>
                 </ListItemAvatar>

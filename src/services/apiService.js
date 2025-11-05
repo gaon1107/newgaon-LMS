@@ -167,8 +167,19 @@ export const studentService = {
   bulkImportStudents: async (file) => {
     const formData = new FormData()
     formData.append('file', file)
-    
+
     const response = await apiClient.post('/students/bulk-import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  // 학생 프로필 사진 업로드
+  uploadPhoto: async (photoFile) => {
+    const formData = new FormData()
+    formData.append('photo', photoFile)
+
+    const response = await apiClient.post('/students/upload-photo', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     return response.data
