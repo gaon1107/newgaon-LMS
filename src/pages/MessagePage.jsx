@@ -25,7 +25,11 @@ import {
   DialogContent,
   DialogActions,
   IconButton,
-  Divider
+  Divider,
+  List,
+  ListItem,
+  Checkbox,
+  FormControlLabel
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import {
@@ -53,6 +57,10 @@ const MessagePage = () => {
   const [loading, setLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [previewDialog, setPreviewDialog] = useState({ open: false, data: null })
+
+  // 개별/반별 선택을 위한 추가 state
+  const [selectedClass, setSelectedClass] = useState('') // 반별 발송 시 선택된 강의
+  const [selectAll, setSelectAll] = useState(false) // 전체 선택 체크박스
 
   // 메세지 템플릿 관리
   const [messageTemplates, setMessageTemplates] = useState([])
@@ -111,10 +119,9 @@ const MessagePage = () => {
 
   // 임시 학생 데이터 (Context에서 가져온 데이터로 대체 예정)
   const mockStudents = students.length > 0 ? students.map(student => ({
-    id: student.id,
-    name: student.name,
+    ...student, // 원본 학생 데이터의 모든 필드 유지 (selectedClasses 포함)
     class: student.class || '미배정',
-    parentPhone: student.parentPhone
+    parentPhone: student.parentPhone || student.phone // parentPhone 또는 phone 필드 사용
   })) : [
     { id: 1, name: '김철수', class: '수학 A반', parentPhone: '010-1111-2222' },
     { id: 2, name: '이영희', class: '영어 B반', parentPhone: '010-3333-4444' },
@@ -406,11 +413,21 @@ const MessagePage = () => {
   ]
 
   const handleRecipientsChange = (event) => {
-    setRecipients(event.target.value)
-    if (event.target.value === 'all') {
+    const value = event.target.value
+    setRecipients(value)
+
+    if (value === 'all') {
+      // 기존 로직 유지 - 절대 수정하지 않음
       setSelectedStudents(mockStudents)
-    } else {
+    } else if (value === 'class') {
+      // 반별 발송: 초기화
       setSelectedStudents([])
+      setSelectedClass('')
+      setSelectAll(false)
+    } else if (value === 'individual') {
+      // 개별 선택: 초기화
+      setSelectedStudents([])
+      setSelectAll(false)
     }
   }
 
@@ -495,6 +512,122 @@ const MessagePage = () => {
       setMessageTemplates(updatedTemplates)
       saveMessageTemplates(updatedTemplates)
     }
+  }
+
+  // 개별/반별 선택을 위한 새로운 함수들
+
+  // 표시할 학생 목록 계산
+  const getDisplayStudents = () => {
+    if (recipients === 'class' && selectedClass) {
+      // 선택된 강의에 속한 학생만 필터링
+      // 주의: 강의 ID는 문자열입니다 ('lecture_...')
+      const classId = selectedClass // 문자열 그대로 사용
+
+      console.log('🔍 선택된 강의 ID:', classId)
+
+      // 방법 1: student.selectedClasses 사용 (있는 경우)
+      const studentsWithClasses = mockStudents.filter(student => {
+        const hasSelectedClasses = student.selectedClasses && Array.isArray(student.selectedClasses)
+        if (hasSelectedClasses) {
+          // 문자열로 비교
+          return student.selectedClasses.includes(classId)
+        }
+        return false
+      })
+
+      console.log('✅ selectedClasses로 필터링된 학생:', studentsWithClasses)
+
+      if (studentsWithClasses.length > 0) {
+        return studentsWithClasses
+      }
+
+      // 방법 2: lectures에서 역으로 찾기 (selectedClasses가 없는 경우)
+      const selectedLecture = lectures.find(l => l.id === classId) // 문자열로 비교
+      console.log('📖 선택된 강의:', selectedLecture)
+
+      if (selectedLecture) {
+        // lecture에 students 배열이 있는 경우
+        if (selectedLecture.students && Array.isArray(selectedLecture.students)) {
+          const filtered = mockStudents.filter(student =>
+            selectedLecture.students.includes(student.id)
+          )
+          console.log('✅ lecture.students로 필터링된 학생:', filtered)
+          return filtered
+        }
+
+        // 학생 데이터에서 이 강의를 선택한 학생 찾기
+        const studentsInLecture = mockStudents.filter(student => {
+          // student가 이 강의를 수강하는지 확인
+          if (student.selectedClasses && Array.isArray(student.selectedClasses)) {
+            return student.selectedClasses.includes(classId)
+          }
+          // lectures 필드도 확인
+          if (student.lectures && Array.isArray(student.lectures)) {
+            return student.lectures.includes(classId)
+          }
+          return false
+        })
+
+        console.log('✅ 역방향 필터링된 학생:', studentsInLecture)
+
+        if (studentsInLecture.length > 0) {
+          return studentsInLecture
+        }
+
+        // 모든 학생을 반환 (임시 - 데이터 구조 확인용)
+        console.log('⚠️ 학생-강의 관계를 찾을 수 없습니다. 전체 학생 반환 (임시)')
+        return mockStudents
+      }
+
+      // 둘 다 없으면 빈 배열
+      console.log('❌ 학생을 찾을 수 없습니다')
+      return []
+    } else if (recipients === 'individual') {
+      // 개별 선택: 전체 학생 목록
+      return mockStudents
+    }
+    return []
+  }
+
+  // 반(강의) 선택 처리
+  const handleClassChange = (event) => {
+    const classId = event.target.value
+    setSelectedClass(classId)
+    setSelectedStudents([]) // 강의 변경 시 선택 초기화
+    setSelectAll(false)
+  }
+
+  // 개별 학생 선택/해제
+  const handleStudentToggle = (student) => {
+    const isSelected = selectedStudents.some(s => s.id === student.id)
+
+    if (isSelected) {
+      // 선택 해제
+      setSelectedStudents(prev => prev.filter(s => s.id !== student.id))
+    } else {
+      // 선택 추가
+      setSelectedStudents(prev => [...prev, student])
+    }
+  }
+
+  // 전체 선택/해제
+  const handleSelectAllToggle = (event) => {
+    const checked = event.target.checked
+    setSelectAll(checked)
+
+    if (checked) {
+      // 현재 표시된 학생 전체 선택
+      const displayStudents = getDisplayStudents()
+      setSelectedStudents([...displayStudents])
+    } else {
+      // 전체 해제
+      setSelectedStudents([])
+    }
+  }
+
+  // 학생 선택 여부 확인
+  const isStudentSelected = (studentId) => {
+    return selectedStudents.some(s => s.id === studentId)
   }
 
   const getTotalCost = () => {
@@ -755,34 +888,111 @@ const MessagePage = () => {
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   <PeopleIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  발송 대상자
+                  발송 대상자 ({selectedStudents.length}명)
                 </Typography>
-                
-                {selectedStudents.length > 0 ? (
-                  <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-                    {selectedStudents.map((student) => (
-                      <Box 
-                        key={student.id} 
-                        sx={{ 
-                          p: 1, 
-                          mb: 1, 
-                          bgcolor: 'grey.100', 
-                          borderRadius: 1 
-                        }}
-                      >
-                        <Typography variant="body2">
-                          {student.name} ({student.class})
+
+                {/* 반별 발송: 강의 선택 드롭다운 */}
+                {recipients === 'class' && (
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>강의 선택</InputLabel>
+                    <Select
+                      value={selectedClass}
+                      onChange={handleClassChange}
+                      label="강의 선택"
+                    >
+                      <MenuItem value="">선택하세요</MenuItem>
+                      {lectures.map((lecture) => (
+                        <MenuItem key={lecture.id} value={lecture.id}>
+                          {lecture.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+
+                {/* 개별 선택 또는 반별 발송: 학생 목록 + 체크박스 */}
+                {(recipients === 'individual' || (recipients === 'class' && selectedClass)) && (
+                  <>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={selectAll}
+                          onChange={handleSelectAllToggle}
+                          indeterminate={
+                            selectedStudents.length > 0 &&
+                            selectedStudents.length < getDisplayStudents().length
+                          }
+                        />
+                      }
+                      label="전체 선택"
+                      sx={{ mb: 1 }}
+                    />
+                    <Divider sx={{ mb: 1 }} />
+                    <Box sx={{ maxHeight: 350, overflow: 'auto' }}>
+                      {getDisplayStudents().length > 0 ? (
+                        <List dense>
+                          {getDisplayStudents().map((student) => (
+                            <ListItem
+                              key={student.id}
+                              dense
+                              sx={{
+                                px: 0,
+                                py: 0.5,
+                                borderRadius: 1,
+                                bgcolor: isStudentSelected(student.id) ? 'action.selected' : 'transparent'
+                              }}
+                            >
+                              <Checkbox
+                                checked={isStudentSelected(student.id)}
+                                onChange={() => handleStudentToggle(student)}
+                                size="small"
+                                sx={{ py: 0 }}
+                              />
+                              <Typography variant="body2">
+                                {student.name}
+                              </Typography>
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+                          {recipients === 'class' ? '강의를 선택해주세요.' : '학생이 없습니다.'}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {student.parentPhone}
-                        </Typography>
+                      )}
+                    </Box>
+                  </>
+                )}
+
+                {/* 전체 학생 발송: 기존 UI 유지 */}
+                {recipients === 'all' && (
+                  <>
+                    {selectedStudents.length > 0 ? (
+                      <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                        {selectedStudents.map((student) => (
+                          <Box
+                            key={student.id}
+                            sx={{
+                              p: 1,
+                              mb: 1,
+                              bgcolor: 'grey.100',
+                              borderRadius: 1
+                            }}
+                          >
+                            <Typography variant="body2">
+                              {student.name} ({student.class})
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {student.parentPhone}
+                            </Typography>
+                          </Box>
+                        ))}
                       </Box>
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    발송 대상자를 선택해주세요.
-                  </Typography>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        발송 대상자를 선택해주세요.
+                      </Typography>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
