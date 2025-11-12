@@ -113,14 +113,15 @@ export const AttendanceProvider = ({ children }) => {
         Object.keys(recordsByStudent).forEach(studentId => {
           const records = recordsByStudent[studentId]
 
-          // 첫 번째 등원 찾기 (present, late)
-          const firstCheckIn = records.find(r => ['present', 'late'].includes(r.status))
+          // ✅ 백엔드는 ORDER BY created_at DESC로 정렬 → records[0]이 가장 최근!
+          // 첫 번째 등원 찾기 (present, late) - 역순에서 찾기
+          const firstCheckIn = [...records].reverse().find(r => ['present', 'late'].includes(r.status))
 
-          // 마지막 하원 찾기 (left, early_leave)
-          const lastCheckOut = [...records].reverse().find(r => ['left', 'early_leave'].includes(r.status))
+          // 마지막 하원 찾기 (left, early_leave) - 정순에서 찾기
+          const lastCheckOut = records.find(r => ['left', 'early_leave'].includes(r.status))
 
           // 가장 최근 레코드 (현재 상태 판단용)
-          const lastRecord = records[records.length - 1]
+          const lastRecord = records[0] // ✅ 수정: DESC 정렬이므로 첫 번째가 최신
 
           attendanceMap[studentId] = {
             status: lastRecord.status, // 마지막 상태가 현재 상태
