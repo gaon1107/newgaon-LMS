@@ -32,7 +32,7 @@ import DraggableDialog from '../components/common/DraggableDialog'
 
 const HomePage = () => {
   const navigate = useNavigate()
-  const { login, isLoading } = useContext(AuthContext)
+  const { user, login, isLoading } = useContext(AuthContext)
   const { getPublishedAnnouncements, incrementViews } = useAnnouncements()
 
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
@@ -61,7 +61,8 @@ const HomePage = () => {
 
     const result = await login({
       username: loginData.username,
-      password: loginData.password
+      password: loginData.password,
+      rememberMe: loginData.rememberMe // 자동 로그인 여부 전달
     })
 
     if (result.success) {
@@ -144,6 +145,13 @@ const HomePage = () => {
     }, 4000)
     return () => clearInterval(interval)
   }, [])
+
+  // 자동 로그인: 이미 로그인된 사용자는 대시보드로 리다이렉트
+  useEffect(() => {
+    if (!isLoading && user) {
+      navigate('/dashboard')
+    }
+  }, [user, isLoading, navigate])
 
   return (
     <Box>

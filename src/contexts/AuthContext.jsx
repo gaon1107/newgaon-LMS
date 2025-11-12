@@ -48,11 +48,14 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true)
 
-      // 실제 API 호출
-      const response = await authService.login(credentials)
+      // 자동 로그인 여부 추출
+      const { rememberMe, ...loginCredentials } = credentials
 
-      // 토큰 저장 (response 객체에서 직접 가져오기)
-      authService.setTokens(response.accessToken, response.refreshToken)
+      // 실제 API 호출 (rememberMe는 제외하고 전송)
+      const response = await authService.login(loginCredentials)
+
+      // 토큰 저장 (자동 로그인 여부 전달)
+      authService.setTokens(response.accessToken, response.refreshToken, rememberMe)
 
       // 사용자 정보 설정 (API 응답에 포함됨)
       setUser(response.user)

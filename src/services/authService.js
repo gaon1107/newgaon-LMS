@@ -68,33 +68,46 @@ apiClient.interceptors.response.use(
 
 // 토큰 관리 함수들
 export const getAccessToken = () => {
-  return Cookies.get(TOKEN_KEYS.ACCESS) || localStorage.getItem(TOKEN_KEYS.ACCESS)
+  return Cookies.get(TOKEN_KEYS.ACCESS) ||
+         localStorage.getItem(TOKEN_KEYS.ACCESS) ||
+         sessionStorage.getItem(TOKEN_KEYS.ACCESS)
 }
 
 export const getRefreshToken = () => {
-  return Cookies.get(TOKEN_KEYS.REFRESH) || localStorage.getItem(TOKEN_KEYS.REFRESH)
+  return Cookies.get(TOKEN_KEYS.REFRESH) ||
+         localStorage.getItem(TOKEN_KEYS.REFRESH) ||
+         sessionStorage.getItem(TOKEN_KEYS.REFRESH)
 }
 
-export const setTokens = (accessToken, refreshToken) => {
-  // 쿠키에 저장 (보안상 httpOnly 설정이 이상적이나, JS에서 접근이 필요하므로 일반 쿠키 사용)
-  Cookies.set(TOKEN_KEYS.ACCESS, accessToken, { 
-    expires: 1, // 1일
-    secure: window.location.protocol === 'https:',
-    sameSite: 'strict'
-  })
-  
-  if (refreshToken) {
-    Cookies.set(TOKEN_KEYS.REFRESH, refreshToken, { 
-      expires: 7, // 7일
+export const setTokens = (accessToken, refreshToken, rememberMe = false) => {
+  if (rememberMe) {
+    // 자동 로그인 ON: Cookie + localStorage 저장
+    // 쿠키에 저장 (보안상 httpOnly 설정이 이상적이나, JS에서 접근이 필요하므로 일반 쿠키 사용)
+    Cookies.set(TOKEN_KEYS.ACCESS, accessToken, {
+      expires: 1, // 1일
       secure: window.location.protocol === 'https:',
       sameSite: 'strict'
     })
-  }
-  
-  // localStorage에도 백업 저장
-  localStorage.setItem(TOKEN_KEYS.ACCESS, accessToken)
-  if (refreshToken) {
-    localStorage.setItem(TOKEN_KEYS.REFRESH, refreshToken)
+
+    if (refreshToken) {
+      Cookies.set(TOKEN_KEYS.REFRESH, refreshToken, {
+        expires: 7, // 7일
+        secure: window.location.protocol === 'https:',
+        sameSite: 'strict'
+      })
+    }
+
+    // localStorage에도 백업 저장
+    localStorage.setItem(TOKEN_KEYS.ACCESS, accessToken)
+    if (refreshToken) {
+      localStorage.setItem(TOKEN_KEYS.REFRESH, refreshToken)
+    }
+  } else {
+    // 자동 로그인 OFF: sessionStorage에만 저장
+    sessionStorage.setItem(TOKEN_KEYS.ACCESS, accessToken)
+    if (refreshToken) {
+      sessionStorage.setItem(TOKEN_KEYS.REFRESH, refreshToken)
+    }
   }
 }
 
@@ -103,6 +116,8 @@ export const removeTokens = () => {
   Cookies.remove(TOKEN_KEYS.REFRESH)
   localStorage.removeItem(TOKEN_KEYS.ACCESS)
   localStorage.removeItem(TOKEN_KEYS.REFRESH)
+  sessionStorage.removeItem(TOKEN_KEYS.ACCESS)
+  sessionStorage.removeItem(TOKEN_KEYS.REFRESH)
 }
 
 // 인증 관련 API 함수들
